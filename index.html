@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF8F1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>时间手账</title>
+<style>
+  :root{
+    --paper:#FBF8F1;
+    --card:#FFFFFF;
+    --ink:#232936;
+    --ink-2:#6B7280;
+    --line:#E7E1D2;
+    --blue:#2B5BB7;
+    --blue-soft:#EAF0FB;
+    --unrec:#E9E5DA;
+    --radius:14px;
+    --nav-h:58px;
+    --mono:ui-monospace,"SF Mono","Roboto Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+    font-size:15px;line-height:1.5;
+    max-width:520px;margin:0 auto;
+    min-height:100vh;
+    padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));
+    user-select:none;
+  }
+  header{
+    padding:14px 16px 4px;
+    display:flex;align-items:baseline;justify-content:space-between;
+  }
+  header h1{font-size:17px;margin:0;letter-spacing:.06em}
+  header h1 small{font-size:11px;color:var(--ink-2);font-weight:400;margin-left:8px;letter-spacing:.02em}
+  .datebar{
+    display:flex;align-items:center;justify-content:center;gap:4px;
+    padding:2px 8px 8px;
+  }
+  .datebar button{
+    border:none;background:none;color:var(--ink-2);font-size:20px;
+    width:44px;height:36px;cursor:pointer;border-radius:10px;
+  }
+  .datebar button:active{background:var(--blue-soft)}
+  .datebar .cur{
+    min-width:150px;text-align:center;font-size:15px;font-weight:600;cursor:pointer;
+    padding:4px 10px;border-radius:10px;
+  }
+  .datebar .cur .backtoday{color:var(--blue);font-size:12px;font-weight:400;margin-left:6px}
+
+  /* ── 标签行 ── */
+  .tags{
+    display:flex;gap:8px;overflow-x:auto;padding:6px 16px 12px;
+    scrollbar-width:none;
+  }
+  .tags::-webkit-scrollbar{display:none}
+  .tag{
+    flex:0 0 auto;display:flex;align-items:center;gap:6px;
+    padding:7px 13px;border-radius:999px;
+    background:var(--card);border:1.5px solid var(--line);
+    font-size:14px;cursor:pointer;position:relative;
+    transition:transform .08s;
+  }
+  .tag:active{transform:scale(.94)}
+  .tag .dot{width:9px;height:9px;border-radius:50%}
+  .tag.running{color:#fff;border-color:transparent;font-weight:600}
+  .tag.running .dot{background:#fff !important;animation:pulse 1.2s infinite}
+  .tag .elapsed{font-family:var(--mono);font-size:12px;opacity:.9}
+  .tag .del{
+    position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;
+    background:var(--ink-2);color:#fff;font-size:11px;line-height:18px;text-align:center;
+  }
+  .tag.add{color:var(--ink-2);border-style:dashed}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .taghint{padding:0 18px 6px;font-size:11.5px;color:var(--ink-2)}
+
+  /* ── 记录列表 ── */
+  .records{padding:2px 16px 90px}
+  .rec{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:10px 12px;margin-bottom:8px;cursor:pointer;position:relative;
+  }
+  .rec.sel{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)}
+  .rec .row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .rec .time{font-family:var(--mono);font-size:14.5px;letter-spacing:.02em}
+  .rec .dur{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+  .rec .cat{
+    display:inline-flex;align-items:center;gap:5px;font-size:12.5px;
+    padding:2px 9px;border-radius:999px;color:#fff;margin-left:auto;
+  }
+  .rec .cat.none{background:none;color:var(--ink-2);border:1px dashed var(--line)}
+  .rec .note{font-size:13px;color:var(--ink-2);margin-top:5px;white-space:pre-wrap;word-break:break-all}
+  .rec .live{color:var(--blue);font-weight:600}
+  .rec .expand{margin-top:9px;border-top:1px dashed var(--line);padding-top:9px}
+  .rec textarea{
+    width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+    font:inherit;font-size:13.5px;resize:none;background:var(--paper);color:var(--ink);
+    min-height:64px;user-select:text;
+  }
+  .rec .exrow{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+  .rec .cnt{font-size:11px;color:var(--ink-2);font-family:var(--mono)}
+  .rec .delbtn{border:none;background:none;color:#C2543B;font-size:13px;cursor:pointer;padding:4px 6px}
+  .rec .assignhint{font-size:11.5px;color:var(--blue)}
+  .empty{
+    text-align:center;color:var(--ink-2);font-size:13.5px;padding:56px 30px;line-height:2;
+  }
+  .empty .big{font-size:30px;opacity:.4}
+
+  /* ── 编辑模式 ── */
+  .editwrap{padding:0 16px 90px;display:none}
+  .editwrap .paper{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:4px 0;
+    background-image:repeating-linear-gradient(transparent,transparent 27px,var(--line) 27px,var(--line) 28px);
+  }
+  .editwrap textarea{
+    width:100%;border:none;background:transparent;outline:none;resize:none;
+    font-family:var(--mono);font-size:14px;line-height:28px;
+    padding:0 14px;min-height:340px;color:var(--ink);user-select:text;
+  }
+  .editwrap .fmt{font-size:11.5px;color:var(--ink-2);padding:10px 4px;line-height:1.8}
+
+  /* ── 浮动编辑按钮 ── */
+  .fab{
+    position:fixed;left:18px;bottom:calc(var(--nav-h) + 18px + env(safe-area-inset-bottom));
+    width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+    background:var(--blue);color:#fff;font-size:21px;
+    box-shadow:0 4px 14px rgba(43,91,183,.35);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .fab.done{background:#2E9E63;box-shadow:0 4px 14px rgba(46,158,99,.35)}
+
+  /* ── 统计页 ── */
+  .stats{padding:0 16px 30px;display:none}
+  .modes{display:flex;justify-content:center;gap:6px;margin:2px 0 10px}
+  .modes button{
+    border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);
+    padding:5px 18px;border-radius:999px;font-size:13px;cursor:pointer;font-family:var(--mono);
+  }
+  .modes button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .clockwrap{display:flex;justify-content:center;padding:4px 0 8px}
+  .bars{margin-top:14px}
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+  .bar .name{
+    flex:0 0 76px;display:flex;align-items:center;gap:6px;font-size:13px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .bar .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .bar .track{flex:1;height:12px;background:var(--card);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:99px}
+  .bar .val{flex:0 0 96px;text-align:right;font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+  .datasec{margin-top:26px;border-top:1px dashed var(--line);padding-top:14px}
+  .datasec h3{font-size:13px;color:var(--ink-2);margin:0 0 10px;font-weight:500}
+  .datasec .btns{display:flex;gap:10px}
+  .datasec button{
+    flex:1;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    padding:10px;border-radius:11px;font-size:13.5px;cursor:pointer;
+  }
+
+  /* ── 底部导航 ── */
+  nav{
+    position:fixed;bottom:0;left:0;right:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+    background:rgba(251,248,241,.92);backdrop-filter:blur(10px);
+    border-top:1px solid var(--line);
+    display:flex;max-width:520px;margin:0 auto;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav button{
+    flex:1;border:none;background:none;font-size:14px;color:var(--ink-2);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  }
+  nav button.on{color:var(--blue);font-weight:600}
+  nav button .ico{font-size:17px}
+
+  .toast{
+    position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(var(--nav-h) + 84px);
+    background:var(--ink);color:#fff;font-size:13px;
+    padding:9px 18px;border-radius:99px;opacity:0;pointer-events:none;
+    transition:opacity .25s;white-space:nowrap;z-index:99;
+  }
+  .toast.show{opacity:.94}
+  svg text{font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>时间手账<small id="runBadge"></small></h1>
+</header>
+
+<div class="datebar">
+  <button id="dPrev">‹</button>
+  <div class="cur" id="dCur"></div>
+  <button id="dNext">›</button>
+</div>
+
+<!-- 记录页 -->
+<div id="pageRecord">
+  <div class="tags" id="tagRow"></div>
+  <div class="taghint">双击标签：开始 / 结束计时　·　单击标签：给选中记录设置分类</div>
+  <div class="records" id="recList"></div>
+  <div class="editwrap" id="editWrap">
+    <div class="paper"><textarea id="editTa" spellcheck="false"
+      placeholder="16.31-16.47 工作 备注...&#10;16.47-16.54 X&#10;21.58 只写开始时间表示计时中"></textarea></div>
+    <div class="fmt">格式：<b>起.分-止.分 分类 备注</b>，每行一条 · X 表示休息 · 只写一个时间表示尚未结束 · 分类留空可稍后单击标签补上</div>
+  </div>
+  <button class="fab" id="fab">✎</button>
+</div>
+
+<!-- 统计页 -->
+<div class="stats" id="pageStats">
+  <div class="modes">
+    <button data-m="am">AM</button>
+    <button data-m="pm">PM</button>
+    <button data-m="all" class="on">All</button>
+  </div>
+  <div class="clockwrap" id="clockWrap"></div>
+  <div class="bars" id="barWrap"></div>
+  <div class="datasec">
+    <h3>数据（保存在本机浏览器，换设备或清缓存前请先导出）</h3>
+    <div class="btns">
+      <button id="btnExport">导出 JSON</button>
+      <button id="btnImport">导入 JSON</button>
+    </div>
+    <input type="file" id="fileIn" accept=".json,application/json" style="display:none">
+  </div>
+</div>
+
+<nav>
+  <button id="navRec" class="on"><span class="ico">✎</span>记录</button>
+  <button id="navSta"><span class="ico">◔</span>统计</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════ 状态与存储 ═══════════ */
+const LS_KEY = 'tt_state_v1';
+const PALETTE = ['#C2543B','#0E8B8B','#8A6D2F','#5B7F2B','#A04FB5','#3E7BC4','#B5484D','#3A8F6E'];
+const DEFAULT_CATS = [
+  {id:'work',  name:'工作', color:'#2B5BB7', builtin:true},
+  {id:'study', name:'学习', color:'#7C4DBE', builtin:true},
+  {id:'chill', name:'休闲', color:'#E08A00', builtin:true},
+  {id:'sport', name:'运动', color:'#2E9E63', builtin:true},
+  {id:'sleep', name:'睡眠', color:'#3E4C8A', builtin:true},
+  {id:'social',name:'社交', color:'#D9548A', builtin:true},
+  {id:'rest',  name:'休息', color:'#98A0AB', builtin:true},
+];
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const s = JSON.parse(raw); if(s && s.cats && s.recs) return s; }
+  }catch(e){}
+  return { cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), recs:{}, mode:'all' };
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){ toast('存储失败：空间不足？'); } }
+
+/* ═══════════ 工具函数 ═══════════ */
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+function todayKey(){ const d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function keyToDate(k){ const [y,m,d]=k.split('-').map(Number); return new Date(y,m-1,d); }
+function shiftDay(k,n){ const d=keyToDate(k); d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function hmToMin(hm){ const [h,m]=hm.split(':').map(Number); return h*60+m; }
+function nowHM(){ const d=new Date(); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+function nowMin(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function fmtDur(min){
+  if(min<60) return min+'min';
+  const h=Math.floor(min/60), m=min%60;
+  return m ? h+'h'+m+'m' : h+'h';
+}
+function dotHM(hm){ return hm.replace(':','.'); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function catById(id){ return S.cats.find(c=>c.id===id)||null; }
+function catByName(name){
+  if(/^[xX×]$/.test(name)) return S.cats.find(c=>c.id==='rest');
+  return S.cats.find(c=>c.name===name)||null;
+}
+function dayRecs(k){ if(!S.recs[k]) S.recs[k]=[]; return S.recs[k]; }
+/* 一条记录的时长（分钟），计时中按当前时间算，跨零点按+24h算 */
+function recDur(r, dateKey){
+  const s = hmToMin(r.start);
+  let e;
+  if(r.end==null){
+    if(dateKey!==todayKey()) return 0;
+    e = nowMin();
+  } else e = hmToMin(r.end);
+  if(e < s) e += 1440;
+  return e - s;
+}
+/* 记录在当天 0-1440 内占用的分钟段（跨零点拆两段） */
+function recSegs(r, dateKey){
+  const s = hmToMin(r.start);
+  let e;
+  if(r.end==null){
+    if(dateKey!==todayKey()) return [];
+    e = nowMin();
+    if(e<s) e=1440;
+  } else e = hmToMin(r.end);
+  if(e >= s) return e>s ? [[s,e]] : [];
+  return [[s,1440],[0,e]];   // 跨零点：当天算到 24:00，其余落在次日之外忽略
+}
+
+/* ═══════════ 全局视图状态 ═══════════ */
+let viewDate = todayKey();
+let selRec = null;          // 选中（展开）的记录 id
+let editMode = false;
+let curPage = 'record';
+
+function runningRec(){
+  const rs = dayRecs(todayKey());
+  return rs.find(r => r.end==null) || null;
+}
+
+/* ═══════════ 顶部日期栏 ═══════════ */
+const WEEK = ['日','一','二','三','四','五','六'];
+function renderDate(){
+  const d = keyToDate(viewDate);
+  const isToday = viewDate===todayKey();
+  $('dCur').innerHTML = (d.getMonth()+1)+'月'+d.getDate()+'日 周'+WEEK[d.getDay()]
+    + (isToday ? '' : '<span class="backtoday">回今天</span>');
+}
+$('dPrev').onclick = ()=>{ viewDate=shiftDay(viewDate,-1); exitEdit(false); selRec=null; renderAll(); };
+$('dNext').onclick = ()=>{ viewDate=shiftDay(viewDate, 1); exitEdit(false); selRec=null; renderAll(); };
+$('dCur').onclick  = ()=>{ viewDate=todayKey(); exitEdit(false); selRec=null; renderAll(); };
+
+/* ═══════════ 标签行 ═══════════ */
+let tapTimer=null, tapCat=null;
+function renderTags(){
+  const row = $('tagRow');
+  row.innerHTML='';
+  const run = runningRec();
+  S.cats.forEach(c=>{
+    const el = document.createElement('div');
+    el.className='tag';
+    const isRun = run && run.cat===c.id;
+    if(isRun){
+      el.classList.add('running');
+      el.style.background = c.color;
+      el.innerHTML = `<span class="dot"></span>${c.name}<span class="elapsed">${fmtDur(recDur(run, todayKey()))}</span>`;
+    } else {
+      el.innerHTML = `<span class="dot" style="background:${c.color}"></span>${c.name}`;
+    }
+    if(editMode && !c.builtin){
+      const del=document.createElement('span');
+      del.className='del'; del.textContent='×';
+      del.onclick=(ev)=>{ ev.stopPropagation(); delCat(c); };
+      el.appendChild(del);
+    }
+    el.onclick = ()=>onTagTap(c);
+    row.appendChild(el);
+  });
+  const add=document.createElement('div');
+  add.className='tag add'; add.textContent='＋ 标签';
+  add.onclick=addCat;
+  row.appendChild(add);
+}
+function onTagTap(c){
+  if(tapTimer && tapCat===c.id){           // 双击
+    clearTimeout(tapTimer); tapTimer=null; tapCat=null;
+    toggleTimer(c);
+  } else {
+    if(tapTimer) clearTimeout(tapTimer);
+    tapCat=c.id;
+    tapTimer=setTimeout(()=>{ tapTimer=null; tapCat=null; assignCat(c); }, 280);
+  }
+}
+function addCat(){
+  const name = prompt('新标签名称（如：阅读）');
+  if(!name) return;
+  const nm = name.trim().slice(0,6);
+  if(!nm) return;
+  if(catByName(nm)){ toast('已有同名标签'); return; }
+  const used = S.cats.filter(c=>!c.builtin).length;
+  S.cats.push({id:uid(), name:nm, color:PALETTE[used % PALETTE.length], builtin:false});
+  save(); renderAll();
+}
+function delCat(c){
+  if(!confirm(`删除标签「${c.name}」？已有记录会变为无分类`)) return;
+  Object.values(S.recs).forEach(rs=>rs.forEach(r=>{ if(r.cat===c.id) r.cat=null; }));
+  S.cats = S.cats.filter(x=>x.id!==c.id);
+  save(); renderAll();
+}
+
+/* ═══════════ 计时（双击） ═══════════ */
+function toggleTimer(c){
+  if(editMode){ toast('先退出编辑模式'); return; }
+  const tk = todayKey();
+  const run = runningRec();
+  if(run && run.cat===c.id){                 // 结束当前
+    run.end = nowHM();
+    if(run.end===run.start){                 // 不足 1 分钟
+      const rs=dayRecs(tk);
+      rs.splice(rs.indexOf(run),1);
+      toast('不足 1 分钟，未记录');
+    } else {
+      toast(`${c.name} 结束 · ${fmtDur(recDur(run,tk))}`);
+    }
+  } else {
+    if(run){                                 // 切换：结束旧的
+      run.end = nowHM();
+      if(run.end===run.start){ const rs=dayRecs(tk); rs.splice(rs.indexOf(run),1); }
+    }
+    dayRecs(tk).push({id:uid(), start:nowHM(), end:null, cat:c.id, note:''});
+    toast(`${c.name} 开始计时`);
+    if(viewDate!==tk) viewDate=tk;
+  }
+  save(); renderAll();
+}
+
+/* ═══════════ 单击：设置分类 ═══════════ */
+function assignCat(c){
+  if(editMode){ toast('编辑模式下直接在文字里写分类'); return; }
+  const rs = dayRecs(viewDate);
+  let target = selRec ? rs.find(r=>r.id===selRec) : null;
+  if(!target){
+    const untagged = rs.filter(r=>r.cat==null);
+    target = untagged.length ? untagged[untagged.length-1] : null;
+  }
+  if(!target){ toast('先双击开始计时，或点 ✎ 补录'); return; }
+  target.cat = c.id;
+  save(); renderAll();
+  toast(`已设为「${c.name}」`);
+}
+
+/* ═══════════ 记录列表 ═══════════ */
+function renderRecs(){
+  const list = $('recList');
+  const rs = dayRecs(viewDate).slice().sort((a,b)=>hmToMin(a.start)-hmToMin(b.start));
+  if(!rs.length){
+    list.innerHTML = `<div class="empty"><div class="big">◔</div>
+      双击上方标签开始计时<br>或点左下角 ✎ 手动补录</div>`;
+    return;
+  }
+  list.innerHTML='';
+  rs.forEach(r=>{
+    const c = r.cat ? catById(r.cat) : null;
+    const el = document.createElement('div');
+    el.className = 'rec'+(selRec===r.id?' sel':'');
+    const running = r.end==null;
+    const timeStr = running
+      ? `${r.start} – <span class="live">···</span>`
+      : `${r.start} – ${r.end}`;
+    const durStr = running
+      ? `<span class="live">${fmtDur(recDur(r,viewDate))} 计时中</span>`
+      : fmtDur(recDur(r,viewDate));
+    el.innerHTML = `
+      <div class="row1">
+        <span class="time">${timeStr}</span>
+        <span class="dur">${durStr}</span>
+        ${ c ? `<span class="cat" style="background:${c.color}">${c.name}</span>`
+             : `<span class="cat none">未分类</span>` }
+      </div>
+      ${ r.note && selRec!==r.id ? `<div class="note">${escHtml(r.note)}</div>` : '' }`;
+    if(selRec===r.id){
+      const ex = document.createElement('div');
+      ex.className='expand';
+      ex.innerHTML = `
+        <textarea maxlength="150" placeholder="备注：思考、灵感、想法、摘录…（150字内）">${escHtml(r.note||'')}</textarea>
+        <div class="exrow">
+          <span class="assignhint">单击上方标签可修改分类</span>
+          <span class="cnt">${(r.note||'').length}/150</span>
+          <button class="delbtn">删除记录</button>
+        </div>`;
+      const ta = ex.querySelector('textarea');
+      ta.onclick = ev=>ev.stopPropagation();
+      ta.oninput = ()=>{ r.note = ta.value.slice(0,150); ex.querySelector('.cnt').textContent = r.note.length+'/150'; save(); };
+      ex.querySelector('.delbtn').onclick = ev=>{
+        ev.stopPropagation();
+        if(!confirm('删除这条记录？')) return;
+        const arr = dayRecs(viewDate);
+        arr.splice(arr.indexOf(r),1);
+        selRec=null; save(); renderAll();
+      };
+      el.appendChild(ex);
+    }
+    el.onclick = ()=>{ selRec = (selRec===r.id ? null : r.id); renderRecs(); };
+    list.appendChild(el);
+  });
+}
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ═══════════ 编辑模式（备忘录式补录） ═══════════ */
+$('fab').onclick = ()=>{ editMode ? exitEdit(true) : enterEdit(); };
+function enterEdit(){
+  editMode = true; selRec=null;
+  $('recList').style.display='none';
+  $('editWrap').style.display='block';
+  $('fab').textContent='✓'; $('fab').classList.add('done');
+  $('editTa').value = serializeDay(viewDate);
+  renderTags();
+  $('editTa').focus();
+}
+function exitEdit(commit){
+  if(!editMode) return;
+  if(commit){
+    const parsed = parseText($('editTa').value);
+    /* 保留计时中的记录（若文本里还有对应“只有开始时间”的行则以文本为准） */
+    S.recs[viewDate] = parsed;
+    save();
+  }
+  editMode=false;
+  $('recList').style.display='block';
+  $('editWrap').style.display='none';
+  $('fab').textContent='✎'; $('fab').classList.remove('done');
+  renderAll();
+}
+function serializeDay(k){
+  const rs = dayRecs(k).slice().sort((a,b)=>hmToMin(a.start)-hmToMin(b.start));
+  return rs.map(r=>{
+    const c = r.cat ? catById(r.cat) : null;
+    const cname = c ? (c.id==='rest' ? 'X' : c.name) : '';
+    const t = r.end==null ? dotHM(r.start) : dotHM(r.start)+'-'+dotHM(r.end);
+    return [t, cname, r.note||''].filter(Boolean).join(' ');
+  }).join('\n');
+}
+const RE_RANGE  = /^(\d{1,2})[.:：](\d{1,2})\s*[-—–~至]+\s*(\d{1,2})[.:：](\d{1,2})\s*(.*)$/;
+const RE_SINGLE = /^(\d{1,2})[.:：](\d{1,2})\s*(.*)$/;
+function validHM(h,m){ return h>=0 && h<=24 && m>=0 && m<=59; }
+function toHM(h,m){ if(h===24){h=23;m=59;} return pad(h)+':'+pad(m); }
+function parseText(text){
+  const out=[];
+  text.split('\n').forEach(line=>{
+    const ln = line.trim();
+    if(!ln) return;
+    let m;
+    if(m = ln.match(RE_RANGE)){
+      const [,h1,m1,h2,m2,rest] = m;
+      if(!validHM(+h1,+m1)||!validHM(+h2,+m2)) return junk(ln,out);
+      const {cat,note} = splitRest(rest);
+      out.push({id:uid(), start:toHM(+h1,+m1), end:toHM(+h2,+m2), cat, note});
+    } else if(m = ln.match(RE_SINGLE)){
+      const [,h1,m1,rest] = m;
+      if(!validHM(+h1,+m1)) return junk(ln,out);
+      const {cat,note} = splitRest(rest);
+      out.push({id:uid(), start:toHM(+h1,+m1), end:null, cat, note});
+    } else junk(ln,out);
+  });
+  /* 只允许一条“计时中”（无结束时间）的记录，且仅限今天 */
+  let openSeen=false;
+  out.forEach(r=>{
+    if(r.end==null){
+      if(openSeen || viewDate!==todayKey()) r.end=r.start;
+      else openSeen=true;
+    }
+  });
+  return out;
+}
+function splitRest(rest){
+  const t = (rest||'').trim();
+  if(!t) return {cat:null, note:''};
+  const sp = t.split(/\s+/);
+  const c = catByName(sp[0]);
+  if(c) return {cat:c.id, note:sp.slice(1).join(' ').slice(0,150)};
+  return {cat:null, note:t.slice(0,150)};
+}
+function junk(ln,out){                       /* 非时间行 → 拼进上一条备注 */
+  if(out.length){
+    const prev=out[out.length-1];
+    prev.note = ((prev.note?prev.note+' ':'')+ln).slice(0,150);
+  }
+}
+
+/* ═══════════ 统计页 ═══════════ */
+document.querySelectorAll('.modes button').forEach(b=>{
+  b.onclick=()=>{ S.mode=b.dataset.m; save(); renderStats(); };
+});
+function renderStats(){
+  document.querySelectorAll('.modes button').forEach(b=>
+    b.classList.toggle('on', b.dataset.m===S.mode));
+  renderClock();
+  renderBars();
+}
+/* —— 钟面 —— */
+function polar(cx,cy,r,deg){
+  const rad=(deg-90)*Math.PI/180;
+  return [cx+r*Math.cos(rad), cy+r*Math.sin(rad)];
+}
+function arcPath(cx,cy,r,a0,a1){
+  if(a1-a0>=359.99){          // 整圈
+    const [x0,y0]=polar(cx,cy,r,0),[x1,y1]=polar(cx,cy,r,180);
+    return `M ${x0} ${y0} A ${r} ${r} 0 1 1 ${x1} ${y1} A ${r} ${r} 0 1 1 ${x0} ${y0}`;
+  }
+  const [x0,y0]=polar(cx,cy,r,a0),[x1,y1]=polar(cx,cy,r,a1);
+  return `M ${x0} ${y0} A ${r} ${r} 0 ${a1-a0>180?1:0} 1 ${x1} ${y1}`;
+}
+function renderClock(){
+  const mode=S.mode;
+  const r0 = mode==='pm' ? 720 : 0;
+  const r1 = mode==='am' ? 720 : 1440;
+  const span = r1-r0;
+  const C=132, R=94, W=30;
+  let svg=`<svg viewBox="0 0 264 264" width="272" height="272" role="img" aria-label="时间钟面">`;
+  svg+=`<path d="${arcPath(C,C,R,0,360)}" stroke="var(--unrec)" stroke-width="${W}" fill="none"/>`;
+  /* 记录弧段 */
+  const rs=dayRecs(viewDate);
+  rs.forEach(rec=>{
+    if(!rec.cat) var col='#C9C4B6'; else col=catById(rec.cat)?.color||'#C9C4B6';
+    recSegs(rec,viewDate).forEach(([s,e])=>{
+      const cs=Math.max(s,r0), ce=Math.min(e,r1);
+      if(ce<=cs) return;
+      const a0=(cs-r0)/span*360, a1=(ce-r0)/span*360;
+      svg+=`<path d="${arcPath(C,C,R,a0,Math.max(a1,a0+0.9))}" stroke="${col}" stroke-width="${W}" fill="none"/>`;
+    });
+  });
+  /* 刻度与数字 */
+  const hours = span/60;
+  for(let i=0;i<hours;i++){
+    const a=i/hours*360;
+    const major = (mode==='all') ? i%3===0 : true;
+    const [x0,y0]=polar(C,C,R+W/2+2,a), [x1,y1]=polar(C,C,R+W/2+(major?8:4),a);
+    svg+=`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="var(--ink-2)" stroke-width="${major?1.4:0.7}" opacity=".6"/>`;
+  }
+  const nums = mode==='all' ? [0,3,6,9,12,15,18,21] : [0,3,6,9];
+  nums.forEach(n=>{
+    const a=n*60/span*360;
+    const label = mode==='pm' ? n+12 : n;
+    const [x,y]=polar(C,C,R+W/2+17,a);
+    svg+=`<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">${label}</text>`;
+  });
+  /* 中心信息 */
+  let tot=0; rs.forEach(r=>recSegs(r,viewDate).forEach(([s,e])=>{
+    tot += Math.min(e,r1)-Math.max(s,r0) > 0 ? Math.min(e,r1)-Math.max(s,r0) : 0; }));
+  svg+=`<text x="${C}" y="${C-4}" text-anchor="middle" font-size="19" fill="var(--ink)" font-weight="600">${fmtDur(tot)||'0min'}</text>`;
+  svg+=`<text x="${C}" y="${C+16}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">已记录 · ${mode.toUpperCase()}</text>`;
+  svg+=`</svg>`;
+  $('clockWrap').innerHTML=svg;
+}
+/* —— 百分比条（占全天 24h） —— */
+function renderBars(){
+  const rs=dayRecs(viewDate);
+  const mins={};
+  let untagged=0, total=0;
+  rs.forEach(r=>{
+    const d=recDur(r,viewDate); total+=d;
+    if(r.cat) mins[r.cat]=(mins[r.cat]||0)+d; else untagged+=d;
+  });
+  const rows=[];
+  S.cats.forEach(c=>{ if(mins[c.id]) rows.push({name:c.name,color:c.color,v:mins[c.id]}); });
+  if(untagged) rows.push({name:'未分类',color:'#C9C4B6',v:untagged});
+  rows.sort((a,b)=>b.v-a.v);
+  rows.push({name:'未记录',color:'var(--unrec)',v:Math.max(0,1440-total),unrec:true});
+  $('barWrap').innerHTML = rows.map(r=>{
+    const pct=r.v/1440*100;
+    return `<div class="bar">
+      <span class="name"><span class="dot" style="background:${r.color};${r.unrec?'border:1px solid var(--line)':''}"></span>${r.name}</span>
+      <div class="track"><div class="fill" style="width:${pct}%;background:${r.color}"></div></div>
+      <span class="val">${fmtDur(r.v)||'0min'} · ${Math.round(pct)}%</span>
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════ 导出 / 导入 ═══════════ */
+$('btnExport').onclick = ()=>{
+  const blob=new Blob([JSON.stringify({app:'time-tracker',version:1,exportedAt:new Date().toISOString(),cats:S.cats,recs:S.recs},null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='时间手账-'+todayKey()+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('已导出');
+};
+$('btnImport').onclick = ()=>$('fileIn').click();
+$('fileIn').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const d=JSON.parse(rd.result);
+      if(!d.cats || !d.recs) throw 0;
+      if(!confirm('导入将覆盖当前全部数据，继续？')) return;
+      S.cats=d.cats; S.recs=d.recs;
+      save(); renderAll(); toast('导入成功');
+    }catch(_){ toast('文件格式不对'); }
+  };
+  rd.readAsText(f);
+  e.target.value='';
+};
+
+/* ═══════════ 页面切换 ═══════════ */
+$('navRec').onclick=()=>switchPage('record');
+$('navSta').onclick=()=>switchPage('stats');
+function switchPage(p){
+  curPage=p;
+  $('navRec').classList.toggle('on',p==='record');
+  $('navSta').classList.toggle('on',p==='stats');
+  $('pageRecord').style.display = p==='record'?'block':'none';
+  $('pageStats').style.display  = p==='stats'?'block':'none';
+  if(p==='stats'){ exitEdit(true); renderStats(); }
+}
+
+/* ═══════════ 汇总渲染 ═══════════ */
+function renderAll(){
+  renderDate();
+  renderTags();
+  renderRecs();
+  const run=runningRec();
+  $('runBadge').textContent = run ? `计时中 ${catById(run.cat)?.name||''} ${fmtDur(recDur(run,todayKey()))}` : '';
+  if(curPage==='stats') renderStats();
+}
+function toast(msg){
+  const t=$('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm=setTimeout(()=>t.classList.remove('show'),1800);
+}
+setInterval(()=>{ if(runningRec() && !editMode) renderAll(); }, 30000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) renderAll(); });
+
+renderAll();
+</script>
+</body>
+</html>
