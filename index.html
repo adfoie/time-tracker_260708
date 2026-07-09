@@ -985,7 +985,7 @@ function initSb(){
   });
 }
 function encodeNick(nick){
-  return 'u'+Array.from(nick).map(ch=>ch.codePointAt(0).toString(36)).join('-')+'@timeapp.local';
+  return 'u'+Array.from(nick).map(ch=>ch.codePointAt(0).toString(36)).join('-')+'@timeapp-sync.com';
 }
 async function doSignUp(nick, pw){
   const {data, error} = await sb.auth.signUp({
