@@ -741,10 +741,9 @@ const LINE_H = 28;
 function updateEditLayout(){
   const ta = $('editTa'), fmt = $('editFmt');
   ta.style.height='auto';
-  const lines = ta.value.split('\n').length;
-  const contentH = Math.max(lines*LINE_H, ta.scrollHeight, LINE_H*3);
+  const contentH = Math.max(ta.scrollHeight, LINE_H*3);
   ta.style.height = contentH+'px';
-  const top = lines*LINE_H + 3*LINE_H;          // 空三行
+  const top = contentH + 3*LINE_H;          // 空三行
   fmt.style.top = (top+4)+'px';
   ta.parentElement.style.minHeight = (top + 218)+'px';
 }
