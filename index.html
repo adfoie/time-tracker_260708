@@ -19,6 +19,7 @@
 <script>
 const SUPABASE_URL = "https://noiqejmydvnmklrrgxux.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vaXFlam15ZHZubWtscnJneHV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTk2NzIsImV4cCI6MjA5OTEzNTY3Mn0.inzYgIlVVi2QmzPctXk4UwtGDpAeQN89lGGv4LjSxUQ";
+
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
         onerror="window.__sbLibFailed=true"></script>
@@ -107,7 +108,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .editwrap textarea{
     width:100%;border:none;background:transparent;outline:none;resize:none;
     font-family:var(--mono);font-size:14px;line-height:28px;
-    padding:0 14px;min-height:140px;color:var(--ink);user-select:text;display:block;overflow:hidden;
+    padding:0 14px;min-height:140px;color:var(--ink);user-select:text;display:block;overflow:hidden;touch-action:pan-y;
   }
   .editwrap .fmt{
     position:absolute;left:14px;right:14px;
@@ -240,7 +241,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .tagmenu{background:var(--paper);border-radius:16px;padding:18px 16px;width:86%;max-width:340px}
   .tagmenu .tmtitle{font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:7px;word-break:break-all}
   .tagmenu .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
-  .tagmenu .btns{display:flex;gap:9px}
+  .tagmenu .btns{display:flex;gap:9px;flex-wrap:wrap}
+  .tagmenu .btns button{min-width:30%}
   .tagmenu button{flex:1;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:11px;padding:10px 4px;font-size:13.5px;cursor:pointer}
   .tagmenu button.danger{color:#C2543B}
   /* 心情与日历格 */
@@ -592,11 +594,11 @@ function renderTodos(){
       <span class="box">${t.done?'✓':''}</span>
       <span class="txt">${escHtml(t.text)}</span></div>`;
   });
-  html+=`<div class="todo addtodo" id="addTodo">＋ 添加待办</div>`;
+  html+=`<div class="todo addtodo" id="addTodo" title="单击待办打勾，双击或长按打开菜单">＋ 添加待办</div>`;
   wrap.innerHTML=html;
   wrap.querySelectorAll('.todo[data-id]').forEach(el=>{
     const t=ts.find(x=>x.id===el.dataset.id);
-    let lp=null, fired=false;
+    let lp=null, fired=false, tapTm=null;
     el.addEventListener('pointerdown',()=>{
       fired=false;
       lp=setTimeout(()=>{ fired=true; lp=null;
@@ -606,7 +608,15 @@ function renderTodos(){
     });
     ['pointerup','pointercancel','pointerleave','pointermove'].forEach(ev=>
       el.addEventListener(ev, ()=>{ if(lp){clearTimeout(lp);lp=null;} }));
-    el.addEventListener('click',()=>{ if(fired) return; t.done=!t.done; save(); renderTodos(); });
+    el.addEventListener('click',()=>{
+      if(fired) return;
+      if(tapTm){                                   // 双击：打开菜单
+        clearTimeout(tapTm); tapTm=null;
+        todoMenu(t);
+      } else {                                     // 单击：延迟后打勾
+        tapTm=setTimeout(()=>{ tapTm=null; t.done=!t.done; save(); renderTodos(); }, 280);
+      }
+    });
     el.addEventListener('contextmenu',e=>e.preventDefault());
   });
   $('addTodo').onclick=()=>{
@@ -622,6 +632,7 @@ function todoMenu(t){
   ov.innerHTML=`<div class="tagmenu">
     <div class="tmtitle">待办「${escHtml(t.text)}」</div>
     <div class="btns">
+      <button data-a="edit">修改内容</button>
       <button data-a="mv">移到某天</button>
       <button data-a="del" class="danger">删除</button>
       <button data-a="x">取消</button>
@@ -630,6 +641,13 @@ function todoMenu(t){
   const close=()=>ov.remove();
   ov.onclick=e=>{ if(e.target===ov) close(); };
   ov.querySelector('[data-a="x"]').onclick=close;
+  ov.querySelector('[data-a="edit"]').onclick=()=>{
+    close();
+    const txt=prompt('修改待办内容', t.text);
+    if(!txt||!txt.trim()) return;
+    t.text=txt.trim().slice(0,50);
+    save(); renderTodos();
+  };
   ov.querySelector('[data-a="del"]').onclick=()=>{
     close();
     if(!confirm('删除这条待办？')) return;
@@ -741,7 +759,7 @@ const LINE_H = 28;
 function updateEditLayout(){
   const ta = $('editTa'), fmt = $('editFmt');
   ta.style.height='auto';
-  const contentH = Math.max(ta.scrollHeight, LINE_H*3);
+  const contentH = Math.max(ta.scrollHeight, LINE_H*3);   // 实际渲染高度（含折行）
   ta.style.height = contentH+'px';
   const top = contentH + 3*LINE_H;          // 空三行
   fmt.style.top = (top+4)+'px';
@@ -1280,13 +1298,13 @@ function renderMe(){
         <button id="btnExport">导出 JSON</button>
         <button id="btnImport">导入 JSON</button>
       </div>
-      <div class="tip"><b>导出</b>：把全部记录、标签和月日记打包成一个文件下载保存，用于备份。<br>
-      <b>导入</b>：选择之前导出的文件，恢复全部数据（会覆盖当前数据）。<br>
+      <div class="tip"><b>导出</b>：把全部记录、待办、日记、标签打包成一个文件下载保存，用于备份。<br>
+      <b>导入</b>：选择之前导出的文件，可选<b>合并</b>（只填补没有记录的日期，两边取并集）或<b>全部覆盖</b>（清空后替换）。<br>
       建议每隔一段时间导出一次，文件存到网盘或发给自己。清浏览器缓存前务必先导出。</div>
     </div>
     <div class="mecard">
       <h3>关于</h3>
-      <div class="tip">时间手账 v3 · 数据存于本机${me?'并同步云端':''}<br>
+      <div class="tip">时间手账 v4 · 数据存于本机${me?'并同步云端':''}<br>
       双击标签计时 / 单击设分类 / 长按删标签<br>点顶部日期打开月历</div>
     </div>`;
   if(sbConfigured() && !me && sb){
@@ -1328,14 +1346,73 @@ $('fileIn').onchange = e=>{
     try{
       const d=JSON.parse(rd.result);
       if(!d.cats || !d.recs) throw 0;
-      if(!confirm('导入将覆盖当前全部数据，继续？')) return;
-      S = ensureDefaults({cats:d.cats, recs:d.recs, diary:d.diary||{}, dayDiary:d.dayDiary||{}, todos:d.todos||{}, mode:S.mode});
-      save(); renderAll(); renderMe(); toast('导入成功');
+      importDialog(d);
     }catch(_){ toast('文件格式不对'); }
   };
   rd.readAsText(f);
   e.target.value='';
 };
+function importDialog(d){
+  const ov=document.createElement('div');
+  ov.className='overlay show'; ov.style.alignItems='center';
+  ov.innerHTML=`<div class="tagmenu">
+    <div class="tmtitle">选择导入方式</div>
+    <div style="font-size:12.5px;color:var(--ink-2);line-height:1.9;margin-bottom:13px">
+      <b>合并</b>：只填补当前没有记录的日期，两边取并集，已有日期保持不变。<br>
+      <b>全部覆盖</b>：清除当前全部数据，完全替换为文件内容。</div>
+    <div class="btns">
+      <button data-a="merge">合并（推荐）</button>
+      <button data-a="all" class="danger">全部覆盖</button>
+      <button data-a="x">取消</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  const close=()=>ov.remove();
+  ov.onclick=ev=>{ if(ev.target===ov) close(); };
+  ov.querySelector('[data-a="x"]').onclick=close;
+  ov.querySelector('[data-a="all"]').onclick=()=>{
+    close();
+    if(!confirm('确定清除当前全部数据并替换？此操作不可恢复')) return;
+    S = ensureDefaults({cats:d.cats, recs:d.recs, diary:d.diary||{}, dayDiary:d.dayDiary||{}, todos:d.todos||{}, mode:S.mode});
+    save(); renderAll(); renderMe(); toast('已全部覆盖导入');
+  };
+  ov.querySelector('[data-a="merge"]').onclick=()=>{
+    close();
+    const n=mergeImport(d);
+    save(); renderAll(); renderMe();
+    toast(n?('合并完成：填补了 '+n+' 天的记录'):'合并完成：没有需要填补的日期');
+  };
+}
+function mergeImport(d){
+  /* 标签合并：id 相同沿用；同名不同 id 重映射；全新标签加入 */
+  const remap={};
+  (d.cats||[]).forEach(c=>{
+    if(catById(c.id)) return;
+    const same=S.cats.find(x=>x.name===c.name);
+    if(same){ remap[c.id]=same.id; return; }
+    S.cats.push(c);
+  });
+  const fix=cat=>(cat&&remap[cat])?remap[cat]:cat;
+  let added=0;
+  Object.keys(d.recs||{}).forEach(k=>{
+    if(S.recs[k] && S.recs[k].length) return;      // 已有记录的日期：不动
+    const day=(d.recs[k]||[]).map(r=>({...r, cat:fix(r.cat)}));
+    if(day.length){ S.recs[k]=day; added++; }
+  });
+  Object.keys(d.todos||{}).forEach(k=>{
+    if(S.todos[k] && S.todos[k].length) return;
+    if((d.todos[k]||[]).length) S.todos[k]=d.todos[k];
+  });
+  Object.keys(d.dayDiary||{}).forEach(k=>{
+    const cur=S.dayDiary[k];
+    if(cur && ((cur.text&&cur.text.trim())||cur.mood)) return;
+    S.dayDiary[k]=d.dayDiary[k];
+  });
+  Object.keys(d.diary||{}).forEach(k=>{
+    if(S.diary[k] && S.diary[k].trim()) return;
+    S.diary[k]=d.diary[k];
+  });
+  return added;
+}
 
 /* ═══════════ 页面切换 ═══════════ */
 $('navRec').onclick=()=>switchPage('record');
