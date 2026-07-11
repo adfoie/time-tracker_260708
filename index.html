@@ -1126,24 +1126,34 @@ function enterIdea(){
   $('todoWrap').style.display='none';
   $('ideaWrap').style.display='block';
   const ta=$('ideaTa');
-  ta.value=dotHM(ideaTime)+'. ';
+  // ★ 修改：时间戳显示为可编辑格式，用 █ 占位引导用户修改
+  ta.value= dotHM(ideaTime) + ' . ';  // 时间后面加空格和点，用户可自行修改时间
   ta.style.height='auto'; ta.style.height=Math.max(ta.scrollHeight,140)+'px';
   $('fabIdea').textContent='✓'; $('fabIdea').classList.add('done');
   $('fab').style.display='none';
   ta.focus();
-  try{ ta.setSelectionRange(ta.value.length, ta.value.length); }catch(e){}
+  // 选中时间部分，方便用户直接键入新时间
+  try{ ta.setSelectionRange(0, ta.value.indexOf(' . ')); }catch(e){}
 }
 function exitIdea(commit){
   if(!ideaMode) return;
   if(commit){
     let txt=$('ideaTa').value.trim();
     let start=ideaTime||nowHM();
-    const m=txt.match(/^(\d{1,2})[.:：](\d{1,2})[.。．]?\s*/);
-    if(m && validHM(+m[1],+m[2])){ start=toHM(+m[1],+m[2]); txt=txt.slice(m[0].length).trim(); }
+    // ★ 修改：更灵活地解析时间，支持各种分隔符
+    // 匹配行首的时间，如 "22.30." 或 "22:30" 或 "22.30 " 或 "22.30. "
+    const m=txt.match(/^(\d{1,2})[.:：](\d{1,2})\s*[.。．]?\s*/);
+    if(m && validHM(+m[1],+m[2])){
+      start=toHM(+m[1],+m[2]);
+      txt=txt.slice(m[0].length).trim();
+    } else {
+      // 如果没有时间，自动补上当前时间
+      start=nowHM();
+    }
     if(txt){
       dayRecs(todayKey()).push({id:uid(), start, end:null, cat:null, idea:true, note:txt});
       save();
-      toast('💡 已记录');
+      toast('💡 已记录 at ' + start);
     }
   }
   ideaMode=false; ideaTime=null;
