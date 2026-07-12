@@ -1089,8 +1089,8 @@ function renderRecs(){
           ${r.idea ? `
             <span class="assignhint">使用 #话题 添加分类（如 #工作 #灵感）</span>
             <input class="tag-input" placeholder="输入话题标签，用空格分隔" value="${(r.ideaTags||[]).map(t=>'#'+t).join(' ')}" style="flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px">
-            <label style="font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px">
-              <input type="checkbox" class="public-toggle" ${r.isPublic?'checked':''}> 公开
+            <label style="font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px;cursor:pointer">
+             <input type="checkbox" class="public-toggle" ${r.isPublic?'checked':''} style="width:16px;height:16px;accent-color:var(--blue);cursor:pointer;pointer-events:auto"> 公开
             </label>
           ` : `
             <span class="assignhint">单击上方标签可修改分类</span>
@@ -1126,13 +1126,16 @@ function renderRecs(){
       }
       // 公开/不公开切换
       const pubToggle = ex.querySelector('.public-toggle');
-      if(pubToggle){
-        pubToggle.onchange = ()=>{
-          r.isPublic = pubToggle.checked;
-          save();
-          renderRecs();
-        };
-      }
+       if(pubToggle){
+         pubToggle.onclick = (ev)=>{
+           ev.stopPropagation();  // 阻止事件冒泡到父元素
+         };
+         pubToggle.onchange = ()=>{
+           r.isPublic = pubToggle.checked;
+           save();
+           renderRecs();
+         };
+       }
       easeKeyboard(ta);
       ex.querySelector('.delbtn').onclick = async ev=>{
         ev.stopPropagation();
