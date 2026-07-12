@@ -132,6 +132,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .rec textarea.over{border-color:#C2543B}
   .wkstar{position:absolute;left:50%;transform:translate(-50%,-50%);color:#E0A400;font-size:14px;cursor:pointer;z-index:5;text-shadow:0 0 3px #fff,0 0 3px #fff}
   .tagmenu .dlgcolor{width:100%;height:46px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:13px;padding:4px;cursor:pointer}
+  .rec .tag-input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .rec .exrow .public-toggle{width:16px;height:16px;accent-color:var(--blue);cursor:pointer}
   /* 计划条目 */
 
   .rec.plan{border-style:dashed;border-width:1.5px;background:transparent}
@@ -317,12 +319,24 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <!-- 记录页 -->
 <div id="pageRecord">
   <div class="tags" id="tagRow"></div>
-  <div class="taghint">双击标签：开始/结束计时（起床/晚安为双击打卡） · 单击：设置分类/编辑备注 · 长按：编辑/移动/删除标签 · 晚安的打卡时间截至次日4点</div>
+  <div class="taghint">双击标签：开始/结束计时（起床/晚安为双击打卡） · 单击：设置分类/编辑备注 · 长按：编辑/移动/删除标签</div>
+     <!-- ★ 新增筛选行 -->
+     <div class="taghint" style="display:flex;gap:12px;padding:2px 16px 8px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:6px">
+       <label style="font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px">
+         <input type="checkbox" class="filter-toggle" data-type="idea" checked> 💡 灵感
+       </label>
+       <label style="font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px">
+         <input type="checkbox" class="filter-toggle" data-type="todo" checked> ☑ 待办
+       </label>
+       <label style="font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px">
+         <input type="checkbox" class="filter-toggle" data-type="timeline" checked> ⏱ 时间轴
+       </label>
+     </div>
   <div class="todos" id="todoWrap"></div>
   <div class="records" id="recList"></div>
   <div class="editwrap" id="ideaWrap">
     <div class="paper"><textarea id="ideaTa" spellcheck="false"
-      placeholder="灵感、想法、随手记…（不限字数，自动带上当前时间）"></textarea></div>
+      placeholder="灵感、想法、随手记…（不限字数，自动带上当前时间，使用 #话题）"></textarea></div>
   </div>
   <div class="editwrap" id="editWrap">
     <div class="paper">
@@ -548,6 +562,11 @@ let editMode = false;
 let curPage = 'record';
 let clockSel = null;                    // 钟面选中的色块
 let ideaMode = false, ideaTime = null;  // idea 记录模式
+let filterTag = null;          // null=全部, '_uncat'=未分类, 其他=标签id
+let showIdea = true;
+let showTodo = true;
+let showTimeline = true;
+let showIdeaOnClock = true;    // 时钟星标开关
 let calMonth = viewDate.slice(0,7);     // 'YYYY-MM'
 let calMode = 'stat';                   // 'stat' | 'diary'
 let calTag = null;                      // 查看某标签的月度图表
@@ -585,6 +604,23 @@ function renderTags(){
   const row = $('tagRow');
   row.innerHTML='';
   const run = runningRec();
+     
+  // ★ 先添加"未分类"标签（不参与实际分类，仅用于筛选）
+  const uncatEl = document.createElement('div');
+  uncatEl.className = 'tag';
+  uncatEl.innerHTML = `<span class="dot" style="background:#C9C4B6;border:1px solid var(--line)"></span>未分类`;
+  uncatEl.dataset.uncat = 'true';
+  uncatEl.onclick = ()=>{
+    // 点击未分类：筛选出 cat==null 且不是 idea 的记录
+    filterTag = '_uncat';
+    renderRecs();
+    // 高亮
+    row.querySelectorAll('.tag').forEach(t=>t.style.border='1.5px solid var(--line)');
+    uncatEl.style.border = '2px solid var(--blue)';
+  };
+  row.appendChild(uncatEl);
+  
+  // 原有标签循环
   S.cats.forEach(c=>{
     if(c.hidden) return;
     const el = document.createElement('div');
@@ -597,6 +633,13 @@ function renderTags(){
     } else {
       el.innerHTML = `<span class="dot" style="background:${c.color}"></span>${c.name}`;
     }
+    el.dataset.catId = c.id;
+    el.onclick = ()=>{
+      filterTag = c.id;
+      renderRecs();
+      row.querySelectorAll('.tag').forEach(t=>t.style.border='1.5px solid var(--line)');
+      el.style.border = '2px solid var(--blue)';
+    };
     attachTagEvents(el, c);
     row.appendChild(el);
   });
@@ -812,6 +855,10 @@ function assignCat(c){
 function dayTodos(k){ if(!S.todos[k]) S.todos[k]=[]; return S.todos[k]; }
 function renderTodos(){
   const wrap=$('todoWrap');
+  if(!showTodo){
+    wrap.innerHTML = '';
+    return;
+  }
   const ts=dayTodos(viewDate);
   let html='';
   ts.forEach(t=>{
@@ -982,11 +1029,30 @@ function todoToIcs(t){
 /* ═══════════ 记录列表 ═══════════ */
 function renderRecs(){
   const list = $('recList');
-  const rs = dayRecs(viewDate).slice().sort((a,b)=>hmToMin(a.start)-hmToMin(b.start));
+  let rs = dayRecs(viewDate).slice().sort((a,b)=>hmToMin(a.start)-hmToMin(b.start));
+  
+  // ★ 标签筛选
+  if(filterTag === '_uncat'){
+    rs = rs.filter(r => !r.cat && !r.idea);
+  } else if(filterTag){
+    rs = rs.filter(r => r.cat === filterTag);
+  }
+  // filterTag === null 时显示全部
+  
+  // ★ 分离 idea 和 timeline 用于类型筛选
+  let ideas = rs.filter(r => r.idea);
+  let timelines = rs.filter(r => !r.idea);
+  
+  if(!showIdea) ideas = [];
+  if(!showTimeline) timelines = [];
+  
+  rs = [...timelines, ...ideas];
+  
   if(!rs.length){
     list.innerHTML = `<div class="empty"><div class="big">◔</div>双击上方标签开始计时<br>或点左下角 ✎ 手动补录</div>`;
     return;
   }
+  
   list.innerHTML='';
   rs.forEach(r=>{
     const c = r.cat ? catById(r.cat) : null;
@@ -1002,7 +1068,7 @@ function renderRecs(){
       : running ? `${r.start} – <span class="live">···</span>`
       : `${r.start} – ${r.end==null?r.start:r.end}`;
     const durStr = marker ? (r.cat==='wake'?'起床':'入睡')
-      : idea ? 'idea'
+      : idea ? `idea ${r.isPublic ? '🌍' : '🔒'} ${(r.ideaTags||[]).map(t=>'#'+t).join(' ')}`
       : r.plan ? `计划 ${fmtDur(recDur(r,viewDate))}`
       : running ? `<span class="live">${fmtDur(recDur(r,viewDate))} 计时中</span>`
       : fmtDur(recDur(r,viewDate));
@@ -1019,8 +1085,16 @@ function renderRecs(){
       ex.className='expand';
       ex.innerHTML = `
         <textarea placeholder="${r.idea?'idea 内容…（不限字数）':'备注：思考、灵感、想法、摘录…（150字内）'}">${escHtml(r.note||'')}</textarea>
-        <div class="exrow">
-          <span class="assignhint">单击上方标签可修改分类</span>
+        <div class="exrow" style="flex-wrap:wrap;gap:6px">
+          ${r.idea ? `
+            <span class="assignhint">使用 #话题 添加分类（如 #工作 #灵感）</span>
+            <input class="tag-input" placeholder="输入话题标签，用空格分隔" value="${(r.ideaTags||[]).map(t=>'#'+t).join(' ')}" style="flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px">
+            <label style="font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px">
+              <input type="checkbox" class="public-toggle" ${r.isPublic?'checked':''}> 公开
+            </label>
+          ` : `
+            <span class="assignhint">单击上方标签可修改分类</span>
+          `}
           <span class="cnt">${(r.note||'').length}${r.idea?'字':'/150'}</span>
           <button class="delbtn">删除记录</button>
         </div>`;
@@ -1040,6 +1114,25 @@ function renderRecs(){
         }
         save();
       };
+      // 话题标签输入
+      const tagInput = ex.querySelector('.tag-input');
+      if(tagInput){
+        tagInput.oninput = ()=>{
+          const raw = tagInput.value;
+          const tags = raw.match(/#[\u4e00-\u9fa5a-zA-Z0-9_]{1,20}/g) || [];
+          r.ideaTags = tags.map(t=>t.slice(1));
+          save();
+        };
+      }
+      // 公开/不公开切换
+      const pubToggle = ex.querySelector('.public-toggle');
+      if(pubToggle){
+        pubToggle.onchange = ()=>{
+          r.isPublic = pubToggle.checked;
+          save();
+          renderRecs();
+        };
+      }
       easeKeyboard(ta);
       ex.querySelector('.delbtn').onclick = async ev=>{
         ev.stopPropagation();
@@ -1140,20 +1233,33 @@ function exitIdea(commit){
   if(commit){
     let txt=$('ideaTa').value.trim();
     let start=ideaTime||nowHM();
-    // ★ 修改：更灵活地解析时间，支持各种分隔符
-    // 匹配行首的时间，如 "22.30." 或 "22:30" 或 "22.30 " 或 "22.30. "
     const m=txt.match(/^(\d{1,2})[.:：](\d{1,2})\s*[.。．]?\s*/);
     if(m && validHM(+m[1],+m[2])){
       start=toHM(+m[1],+m[2]);
       txt=txt.slice(m[0].length).trim();
     } else {
-      // 如果没有时间，自动补上当前时间
       start=nowHM();
     }
     if(txt){
-      dayRecs(todayKey()).push({id:uid(), start, end:null, cat:null, idea:true, note:txt});
+      // ★ 提取 #话题标签
+      const tags = [];
+      const clean = txt.replace(/#([\u4e00-\u9fa5a-zA-Z0-9_]{1,20})/g, (match, tag) => {
+        tags.push(tag);
+        return '';
+      });
+      const note = clean.trim();
+      dayRecs(todayKey()).push({
+        id:uid(),
+        start,
+        end:null,
+        cat:null,
+        idea:true,
+        note: note || txt,
+        ideaTags: tags,                    // 话题标签数组
+        isPublic: false                    // ★ 默认不公开
+      });
       save();
-      toast('💡 已记录 at ' + start);
+      toast('💡 已记录 at ' + start + (tags.length ? ' #' + tags.join(' #') : ''));
     }
   }
   ideaMode=false; ideaTime=null;
@@ -1339,8 +1445,65 @@ function renderClock(){
     const v=Math.min(e,r1)-Math.max(s,r0); if(v>0) tot+=v; });
   svg+=`<text x="${C}" y="${C-4}" text-anchor="middle" font-size="19" fill="var(--ink)" font-weight="600">${fmtDur(tot)}</text>`;
   svg+=`<text x="${C}" y="${C+16}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">已记录 · ${mode.toUpperCase()}</text>`;
+  
+  // ★ 在钟面上绘制 idea 星标
+  const ideas = dayRecs(viewDate).filter(r => r.idea);
+  if(showIdeaOnClock && ideas.length){
+    ideas.forEach((r, idx) => {
+      const m = hmToMin(r.start);
+      if(m < r0 || m > r1) return;
+      const a = (m - r0) / span * 360;
+      const radius = R + W/2 + 20 + idx * 10;
+      const [x, y] = polar(C, C, radius, a);
+      const tip = (r.note||'').slice(0,20) + ((r.note||'').length>20?'…':'');
+      svg += `<text class="idea-star" x="${x}" y="${y+4}" text-anchor="middle" font-size="13" 
+                    fill="#E0A400" style="cursor:pointer" 
+                    data-tip="${escHtml(tip)}">⭐</text>`;
+    });
+  }
+  
+  // ★ 左上角开关
+  svg += `<rect x="8" y="8" width="36" height="24" rx="12" fill="${showIdeaOnClock?'var(--blue)':'var(--line)'}" 
+              style="cursor:pointer" id="ideaClockToggle"/>`;
+  svg += `<text x="16" y="24" font-size="10" fill="${showIdeaOnClock?'#fff':'var(--ink-2)'}" 
+              style="cursor:pointer" id="ideaClockToggleLabel">⭐</text>`;
+     
   svg+=`</svg>`;
   $('clockWrap').innerHTML=svg;
+
+  
+  // ★ 星标点击显示内容
+  $('clockWrap').querySelectorAll('.idea-star').forEach(el => {
+    el.onclick = (e)=>{
+      e.stopPropagation();
+      toast('💡 ' + el.dataset.tip);
+    };
+  });
+  
+  // ★ 左上角开关点击
+  const toggle = document.getElementById('ideaClockToggle');
+  if(toggle){
+    toggle.onclick = ()=>{
+      showIdeaOnClock = !showIdeaOnClock;
+      renderClock();
+    };
+  }
+  // label 也要能点
+  const toggleLabel = document.getElementById('ideaClockToggleLabel');
+  if(toggleLabel){
+    toggleLabel.onclick = ()=>{
+      showIdeaOnClock = !showIdeaOnClock;
+      renderClock();
+    };
+  }
+  
+  // 钟面色块点击逻辑（原有代码保持不变）
+  $('clockWrap').querySelectorAll('.cseg,.cflag').forEach(el=>{
+    // ... 原有代码保持不变
+  });
+
+     
+     
   $('clockWrap').querySelectorAll('.cseg,.cflag').forEach(el=>{
     el.addEventListener('click',()=>{
       const id=el.dataset.id;
@@ -2242,6 +2405,26 @@ function switchPage(p){
   if(p==='me') renderMe();
 }
 
+     /* ═══════════ 筛选切换 ═══════════ */
+document.querySelectorAll('.filter-toggle').forEach(cb => {
+  cb.onchange = ()=>{
+    const type = cb.dataset.type;
+    if(type === 'idea') showIdea = cb.checked;
+    if(type === 'todo') showTodo = cb.checked;
+    if(type === 'timeline') showTimeline = cb.checked;
+    renderAll();
+  };
+});
+// 由于筛选按钮在页面加载后才存在，用事件委托
+document.addEventListener('change', (e)=>{
+  if(e.target.classList.contains('filter-toggle')){
+    const type = e.target.dataset.type;
+    if(type === 'idea') showIdea = e.target.checked;
+    if(type === 'todo') showTodo = e.target.checked;
+    if(type === 'timeline') showTimeline = e.target.checked;
+    renderAll();
+  }
+});
 /* ═══════════ 汇总渲染 ═══════════ */
 function renderAll(){
   renderDate();
