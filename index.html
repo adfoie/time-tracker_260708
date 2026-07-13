@@ -2203,7 +2203,14 @@ function sleepChartMonth(){
     if(v!=null) pts.push({x:d-1, full:`${mo}月${d}日`, v});
   }
   const xl=[1,Math.round(days/2),days].map(d=>({i:d-1,t:d+'日'}));
-  return durBars(pts, days, 'slpM', xl);
+  
+  // ★ 计算平均睡眠时长（仅统计有记录的天数）
+  const validPts = pts.filter(p => p.v > 0);
+  const totalSleep = pts.reduce((sum, p) => sum + p.v, 0);
+  const avgSleep = validPts.length > 0 ? Math.round(totalSleep / validPts.length) : 0;
+  
+  // 使用 durBars 时传入 avg 参数
+  return durBars(pts, days, 'slpM', xl, avgSleep);
 }
 function sleepChartWeek(days){
   const WD=['一','二','三','四','五','六','日'];
@@ -2219,29 +2226,63 @@ function sleepChartWeek(days){
   
   return durBars(pts, 7, 'slpW', WD.map((t,i)=>({i,t})), avg);
 }
-function durBars(pts, n, tipId, xlabels){
+function durBars(pts, n, tipId, xlabels, avgValue){
   if(!pts.length) return `<div class="chartbox" style="text-align:center;color:var(--ink-2);font-size:12.5px;padding:14px 0">还没有可配对的入睡与起床打点</div>`;
   const col=catById('sleep').color;
-  const W=340,H=132,P=36;
+  const W=340,H=140,P=36;
   const maxV=Math.max(...pts.map(p=>p.v), 360);
   const step=Math.ceil(maxV/4/60)*60;
   const topV=step*4;
   const bw=(W-P-10)/n;
-  const py=v=>H-20 - v/topV*(H-38);
+  const py=v=>H-24 - v/topV*(H-48);
+  
+  // ★ 计算有效天数
+  const validPts = pts.filter(p => p.v > 0);
+  const avg = avgValue !== undefined ? avgValue : (validPts.length > 0 ? Math.round(pts.reduce((s,p)=>s+p.v,0) / validPts.length) : 0);
+  
   let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  
+  // 网格线
   for(let g=step; g<=topV; g+=step){
     svg+=`<line x1="${P}" y1="${py(g)}" x2="${W-8}" y2="${py(g)}" stroke="var(--line)" stroke-width="1"/>`;
     svg+=`<text x="${P-4}" y="${py(g)+3}" text-anchor="end" font-size="9.5" fill="var(--ink-2)">${fmtDur(g)}</text>`;
   }
-  svg+=`<line x1="${P}" y1="${H-20}" x2="${W-8}" y2="${H-20}" stroke="var(--line)" stroke-width="1"/>`;
+  svg+=`<line x1="${P}" y1="${H-24}" x2="${W-8}" y2="${H-24}" stroke="var(--line)" stroke-width="1"/>`;
+  
+  // ★ 绘制柱子
   pts.forEach(p=>{
-    const bh=(H-20)-py(p.v);
+    const bh=(H-24)-py(p.v);
     svg+=`<rect class="mkdot" x="${P+p.x*bw+2}" y="${py(p.v)}" width="${Math.max(bw-4,3)}" height="${bh}" rx="2.5" fill="${col}" fill-opacity=".85" data-t="${tipId}" data-label="${p.full} · ${fmtDur(p.v)}" style="cursor:pointer"/>`;
+    
+    // ★★ 在柱子上方显示具体数值（如果柱子够高）
+    if(bh > 20){
+      svg+=`<text x="${P+p.x*bw+bw/2}" y="${py(p.v)-4}" text-anchor="middle" font-size="8.5" fill="${col}" font-weight="500">${fmtDur(p.v)}</text>`;
+    }
   });
+  
+  // ★★ 绘制平均线（如果有平均值且 > 0）
+  if(avg > 0){
+    const avgY = py(avg);
+    svg+=`<line x1="${P}" y1="${avgY}" x2="${W-8}" y2="${avgY}" stroke="${col}" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>`;
+    svg+=`<text x="${W-12}" y="${avgY-4}" text-anchor="end" font-size="9.5" fill="${col}" opacity="0.85">平均 ${fmtDur(avg)}</text>`;
+  }
+  
+  // X轴标签
   xlabels.forEach(l=>svg+=`<text x="${P+l.i*bw+bw/2}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${l.t}</text>`);
   svg+=`</svg>`;
+  
+  // ★ 底部显示统计信息
   const last=pts[pts.length-1];
-  return `<div class="tipline" id="${tipId}">${last.full} · ${fmtDur(last.v)}</div><div class="chartbox">${svg}</div>`;
+  let infoHtml = '';
+  if(avg > 0){
+    const daysWithData = validPts.length;
+    infoHtml = `<div style="text-align:center;margin-top:2px;font-size:11px;color:var(--ink-2)">
+      有数据 ${daysWithData} 天 · 日均 <span style="font-weight:600;color:${col}">${fmtDur(avg)}</span>
+      ${pts.length > 0 ? `· 总 <span style="font-weight:600;color:${col}">${fmtDur(pts.reduce((s,p)=>s+p.v,0))}</span>` : ''}
+    </div>`;
+  }
+  
+  return `<div class="tipline" id="${tipId}">${last.full} · ${fmtDur(last.v)}</div><div class="chartbox">${svg}</div>${infoHtml}`;
 }
 function markerChart(catId){
   const days=monthDays(calMonth);
