@@ -1399,17 +1399,25 @@ function renderClock(){
   const r0 = mode==='pm' ? 720 : 0;
   const r1 = mode==='am' ? 720 : 1440;
   const span = r1-r0;
-  const C=132, R=94, W=30;
   
-  // ★ 钟表整体下移：Y 偏移 +30px
-  const Y_OFFSET = 30;
+  // ★ viewBox 扩大，给星标留出空间
+  const VB_X = 10;
+  const VB_Y = 5;
+  const VB_W = 280;
+  const VB_H = 290;
   
-  let svg=`<svg viewBox="0 0 264 264" width="272" height="272" role="img" aria-label="时间钟面">`;
+  // ★ 钟表中心位置（在 viewBox 中居中偏下，给上方星标留空间）
+  const C = 150;       // 中心 X
+  const CY = 155;      // 中心 Y（偏下，给上方星标留空间）
+  const R = 100;       // 钟表半径
+  const W = 30;        // 环宽
+  
+  let svg=`<svg viewBox="${VB_X} ${VB_Y} ${VB_W} ${VB_H}" width="290" height="300" role="img" aria-label="时间钟面">`;
   
   // ★ 背景圆圈
-  svg+=`<path d="${arcPath(C,C+Y_OFFSET,R,0,360)}" stroke="var(--unrec)" stroke-width="${W}" fill="none"/>`;
+  svg+=`<path d="${arcPath(C,CY,R,0,360)}" stroke="var(--unrec)" stroke-width="${W}" fill="none"/>`;
   
-  // ★ 先收集所有 idea，用于计算星标位置
+  // ★ 收集所有记录和 idea
   const rs=dayRecs(viewDate);
   const ideas = rs.filter(r => r.idea);
   
@@ -1431,11 +1439,11 @@ function renderClock(){
     if(ce<=cs) return;
     const a0=(cs-r0)/span*360, a1=Math.max((ce-r0)/span*360, a0+0.9);
     if(clockSel===g.id)
-      svg+=`<path d="${arcPath(C,C+Y_OFFSET,R,a0,a1)}" stroke="var(--ink)" stroke-width="${W+5}" fill="none"/>`;
-    svg+=`<path class="cseg" data-id="${g.id}" data-tip="${escHtml(g.tip)}" d="${arcPath(C,C+Y_OFFSET,R,a0,a1)}" stroke="${g.col}" stroke-width="${W}" fill="none" opacity="${g.op}" style="cursor:pointer"/>`;
+      svg+=`<path d="${arcPath(C,CY,R,a0,a1)}" stroke="var(--ink)" stroke-width="${W+5}" fill="none"/>`;
+    svg+=`<path class="cseg" data-id="${g.id}" data-tip="${escHtml(g.tip)}" d="${arcPath(C,CY,R,a0,a1)}" stroke="${g.col}" stroke-width="${W}" fill="none" opacity="${g.op}" style="cursor:pointer"/>`;
   });
   
-  // ★ 起床红旗与晚安绿旗（Y 坐标加偏移）
+  // ★ 起床红旗与晚安绿旗
   rs.filter(isMarker).forEach(w=>{
     const wake = w.cat==='wake';
     if(wake && mode==='pm') return;
@@ -1444,151 +1452,164 @@ function renderClock(){
     if(m<r0 || m>r1) return;
     const a=(m-r0)/span*360;
     const col = wake ? '#C2543B' : '#1F7A5C';
-    const [ax,ay]=polar(C,C+Y_OFFSET,R-W/2-2,a);
-    const [bx,by]=polar(C,C+Y_OFFSET,R+W/2+12,a);
-    const [px2,py2]=polar(C,C+Y_OFFSET,R+W/2+8.5,a+13);
-    const [qx,qy]=polar(C,C+Y_OFFSET,R+W/2+5,a);
+    const [ax,ay]=polar(C,CY,R-W/2-2,a);
+    const [bx,by]=polar(C,CY,R+W/2+12,a);
+    const [px2,py2]=polar(C,CY,R+W/2+8.5,a+13);
+    const [qx,qy]=polar(C,CY,R+W/2+5,a);
     svg+=`<g class="cflag" data-id="fl_${w.id}" data-tip="${wake?'起床':'入睡'} ${w.start}" style="cursor:pointer">`
        + `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="1.8"/>`
        + `<polygon points="${bx},${by} ${px2},${py2} ${qx},${qy}" fill="${col}"/></g>`;
   });
   
-  // ★ 绘制 idea 星标（在钟表外圈，带虚线指向时间位置）
+  // ★★★ 绘制 idea 星标（使用不同长度虚线避免遮挡） ★★★
   if(showIdeaOnClock && ideas.length){
-    const baseRadius = R + W/2 + 14;  // 星标基准半径（钟表外圈）
-    const maxRadius = baseRadius + 60; // 最大半径（防止溢出）
-    const minRadius = baseRadius + 4;  // 最小半径（紧贴钟表外圈）
+    const outerRadius = R + W/2 + 1;  // 钟表外圈
     
     // 计算每个星标的角度
-    const starAngles = ideas.map(r => {
+    const starItems = ideas.map(r => {
       const m = hmToMin(r.start);
       if(m < r0 || m > r1) return null;
       return {
         rec: r,
         angle: (m - r0) / span * 360,
-        min: m
+        minute: m
       };
     }).filter(s => s !== null);
     
-    // 按角度排序
-    starAngles.sort((a,b) => a.angle - b.angle);
-    
-    // 检测角度冲突，调整半径
-    const MIN_ANGLE_DIFF = 12; // 最小角度差（度），小于此值需要调整半径
-    const RADIUS_STEP = 7;     // 半径步进
-    
-    starAngles.forEach((item, idx) => {
-      // 检查与前一个的角度差
-      let radius = baseRadius;
-      let conflict = false;
+    if(starItems.length){
+      // 按角度排序
+      starItems.sort((a,b) => a.angle - b.angle);
       
-      // 检查前面最近的几个星标
-      for(let j = Math.max(0, idx - 3); j < idx; j++) {
-        const prev = starAngles[j];
-        let diff = item.angle - prev.angle;
-        // 处理跨 0 度情况
-        if(diff < 0) diff += 360;
-        if(diff < MIN_ANGLE_DIFF) {
-          conflict = true;
-          // 根据冲突程度增加半径
-          const overlap = (MIN_ANGLE_DIFF - diff) / MIN_ANGLE_DIFF;
-          radius = baseRadius + Math.ceil(overlap * RADIUS_STEP * (idx - j));
-          break;
+      // ★ 防遮挡：为每个星标分配不同的半径（虚线长度不同）
+      // 基础半径 = 钟表外圈 + 偏移量
+      const baseRadius = outerRadius + 12;
+      const maxRadius = outerRadius + 65;
+      const MIN_ANGLE_DIFF = 13;  // 最小角度差
+      const RADIUS_STEP = 9;       // 半径步进
+      
+      // 先检查冲突，分配半径
+      starItems.forEach((item, idx) => {
+        let radius = baseRadius;
+        
+        // 检查前面几个星标
+        for(let j = Math.max(0, idx - 5); j < idx; j++) {
+          const prev = starItems[j];
+          let diff = item.angle - prev.angle;
+          if(diff < 0) diff += 360;
+          if(diff < MIN_ANGLE_DIFF) {
+            const overlap = (MIN_ANGLE_DIFF - diff) / MIN_ANGLE_DIFF;
+            radius = baseRadius + Math.ceil(overlap * RADIUS_STEP * (idx - j + 1));
+          }
         }
-      }
-      
-      // 限制最大半径，防止溢出视图
-      radius = Math.min(radius, maxRadius);
-      
-      // 如果半径太大，进一步调整角度偏移
-      if(radius >= maxRadius) {
-        // 微调角度，稍微偏移以避免完全重叠
-        const offset = (idx % 2 === 0 ? 1 : -1) * 2;
-        item.adjustedAngle = item.angle + offset;
-      } else {
+        
+        item.radius = Math.min(radius, maxRadius);
         item.adjustedAngle = item.angle;
-      }
-      item.radius = radius;
-    });
-    
-    // 绘制星标
-    starAngles.forEach((item) => {
-      const r = item.rec;
-      const angle = item.adjustedAngle || item.angle;
-      const radius = item.radius || baseRadius;
-      
-      // 计算星标位置（在钟表外圈）
-      const [sx, sy] = polar(C, C + Y_OFFSET, radius, angle);
-      
-      // 计算虚线起点（钟表外圈边缘）
-      const [startX, startY] = polar(C, C + Y_OFFSET, R + W/2 + 1, angle);
-      
-      // ★ 绘制虚线（半透明白色，从钟表外圈指向星标）
-      const tip = (r.note||'').slice(0,15) + ((r.note||'').length>15?'…':'');
-      svg += `<line x1="${startX}" y1="${startY}" x2="${sx}" y2="${sy}" 
-                  stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+        
+        // 如果仍然太近，微调角度
+        for(let j = Math.max(0, idx - 3); j < idx; j++) {
+          const prev = starItems[j];
+          let diff = item.adjustedAngle - prev.adjustedAngle;
+          if(diff < 0) diff += 360;
+          if(diff < 8) {
+            item.adjustedAngle = item.angle + (idx % 2 === 0 ? 4 : -4);
+            break;
+          }
+        }
+      });
       
       // ★ 绘制星标
-      svg += `<text class="idea-star" x="${sx}" y="${sy+5}" text-anchor="middle" 
-                    font-size="16" fill="#E0A400" style="cursor:pointer;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3))" 
-                    data-tip="${escHtml(tip)}">⭐</text>`;
-      
-      // ★ 在钟表外圈位置画一个小圆点标记
-      svg += `<circle cx="${startX}" cy="${startY}" r="2.5" fill="#E0A400" opacity="0.6"/>`;
-    });
+      starItems.forEach((item) => {
+        const r = item.rec;
+        const angle = item.adjustedAngle || item.angle;
+        const radius = item.radius || baseRadius;
+        
+        // 星标位置
+        const [sx, sy] = polar(C, CY, radius, angle);
+        
+        // 虚线起点（钟表外圈）
+        const [startX, startY] = polar(C, CY, outerRadius, angle);
+        
+        // 星标信息
+        const tip = (r.note||'').slice(0,15) + ((r.note||'').length>15?'…':'');
+        const timeStr = r.start;
+        
+        // ★★ 半透明白色虚线（不同长度由 radius 决定） ★★
+        svg += `<line x1="${startX}" y1="${startY}" x2="${sx}" y2="${sy}" 
+                    stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-dasharray="3 4"/>`;
+        
+        // ★★ 钟表边缘小圆点 ★★
+        svg += `<circle cx="${startX}" cy="${startY}" r="2.5" fill="#E0A400" opacity="0.6"/>`;
+        
+        // ★★ 星标 ★★
+        svg += `<text class="idea-star" x="${sx}" y="${sy+5}" text-anchor="middle" 
+                      font-size="16" fill="#E0A400" 
+                      style="cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.35))" 
+                      data-tip="${escHtml(timeStr + ' · ' + tip)}">⭐</text>`;
+      });
+    }
   }
   
-  // ★ 时针刻度（Y 坐标加偏移）
+  // ★ 时针刻度
   const hours = span/60;
   for(let i=0;i<hours;i++){
     const a=i/hours*360;
     const major = (mode==='all') ? i%3===0 : true;
-    const [x0,y0]=polar(C,C+Y_OFFSET,R+W/2+2,a);
-    const [x1,y1]=polar(C,C+Y_OFFSET,R+W/2+(major?8:4),a);
+    const [x0,y0]=polar(C,CY,R+W/2+2,a);
+    const [x1,y1]=polar(C,CY,R+W/2+(major?8:4),a);
     svg+=`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="var(--ink-2)" stroke-width="${major?1.4:0.7}" opacity=".6"/>`;
   }
   
-  // ★ 数字标签（Y 坐标加偏移）
+  // ★ 数字标签
   const numHours = mode==='all' ? [0,3,6,9,12,15,18,21] : [0,3,6,9];
   numHours.forEach(n=>{
     const a=n/hours*360;
     const label = mode==='pm' ? n+12 : n;
-    const [x,y]=polar(C,C+Y_OFFSET,R+W/2+17,a);
-    svg+=`<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">${label}</text>`;
+    const [x,y]=polar(C,CY,R+W/2+18,a);
+    svg+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-weight="500">${label}</text>`;
   });
   
-  // ★ 当前时间指针（Y 坐标加偏移）
+  // ★ 当前时间指针
   if(viewDate===todayKey()){
     const nm=nowMin();
     if(nm>=r0 && nm<=r1){
       const a=(nm-r0)/span*360;
-      const [ix,iy]=polar(C,C+Y_OFFSET,30,a);
-      const [hx,hy]=polar(C,C+Y_OFFSET,R+W/2+1,a);
-      svg+=`<line x1="${ix}" y1="${iy}" x2="${hx}" y2="${hy}" stroke="var(--ink)" stroke-width="2" opacity=".85" stroke-linecap="round"/>`;
-      svg+=`<circle cx="${hx}" cy="${hy}" r="2.6" fill="var(--ink)"/>`;
+      const [ix,iy]=polar(C,CY,30,a);
+      const [hx,hy]=polar(C,CY,R+W/2+2,a);
+      svg+=`<line x1="${ix}" y1="${iy}" x2="${hx}" y2="${hy}" stroke="var(--ink)" stroke-width="2.5" opacity=".8" stroke-linecap="round"/>`;
+      svg+=`<circle cx="${hx}" cy="${hy}" r="3" fill="var(--ink)"/>`;
     }
   }
   
-  // ★ 中心统计文字（Y 坐标加偏移）
-  let tot=0; rs.forEach(r=>recSegs(r,viewDate).forEach(([s,e])=>{
+  // ★ 中心统计文字
+  let tot=0; 
+  rs.forEach(r=>recSegs(r,viewDate).forEach(([s,e])=>{
     const v=Math.min(e,r1)-Math.max(s,r0); if(v>0) tot+=v;
   }));
   implicitSleepSegs(viewDate).forEach(([s,e])=>{
     const v=Math.min(e,r1)-Math.max(s,r0); if(v>0) tot+=v;
   });
-  svg+=`<text x="${C}" y="${C+Y_OFFSET-4}" text-anchor="middle" font-size="19" fill="var(--ink)" font-weight="600">${fmtDur(tot)}</text>`;
-  svg+=`<text x="${C}" y="${C+Y_OFFSET+16}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">已记录 · ${mode.toUpperCase()}</text>`;
+  svg+=`<text x="${C}" y="${CY-4}" text-anchor="middle" font-size="20" fill="var(--ink)" font-weight="700">${fmtDur(tot)}</text>`;
+  svg+=`<text x="${C}" y="${CY+18}" text-anchor="middle" font-size="11" fill="var(--ink-2)">已记录 · ${mode.toUpperCase()}</text>`;
   
-  // ★ 左上角星标开关（移到左上角）
-  svg += `<rect x="6" y="6" width="34" height="22" rx="11" fill="${showIdeaOnClock?'var(--blue)':'var(--line)'}" 
+  // ★ 星标开关（左上角）
+  const hasStars = ideas.length > 0;
+  const toggleColor = showIdeaOnClock && hasStars ? 'var(--blue)' : 'var(--line)';
+  const toggleText = showIdeaOnClock && hasStars ? '#fff' : 'var(--ink-2)';
+  
+  svg += `<rect x="${VB_X+6}" y="${VB_Y+6}" width="38" height="24" rx="12" fill="${toggleColor}" 
               style="cursor:pointer" id="ideaClockToggle"/>`;
-  svg += `<text x="13" y="21" font-size="11" fill="${showIdeaOnClock?'#fff':'var(--ink-2)'}" 
+  svg += `<text x="${VB_X+16}" y="${VB_Y+22}" font-size="11" fill="${toggleText}" 
               style="cursor:pointer;font-weight:600" id="ideaClockToggleLabel">⭐</text>`;
   
-  svg += `</svg>`;
-  $('clockWrap').innerHTML=svg;
+  // ★ 星标数量提示
+  if(hasStars && showIdeaOnClock){
+    svg += `<text x="${VB_X + 50}" y="${VB_Y + 22}" font-size="9" fill="var(--ink-2)" opacity="0.7">${ideas.length}</text>`;
+  }
   
-  // ★ 星标点击显示内容
+  svg += `</svg>`;
+  $('clockWrap').innerHTML = svg;
+  
+  // ★ 星标点击事件
   $('clockWrap').querySelectorAll('.idea-star').forEach(el => {
     el.onclick = (e)=>{
       e.stopPropagation();
@@ -1596,7 +1617,7 @@ function renderClock(){
     };
   });
   
-  // ★ 左上角开关点击
+  // ★ 开关点击事件
   const toggle = document.getElementById('ideaClockToggle');
   if(toggle){
     toggle.onclick = ()=>{
@@ -1612,7 +1633,7 @@ function renderClock(){
     };
   }
   
-  // ★ 钟面色块点击（原有逻辑）
+  // ★ 钟面色块点击
   $('clockWrap').querySelectorAll('.cseg,.cflag').forEach(el=>{
     el.addEventListener('click',()=>{
       const id=el.dataset.id;
