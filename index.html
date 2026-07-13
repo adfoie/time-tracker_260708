@@ -2328,6 +2328,7 @@ function miniClock(k, rs){
   return s+`</svg>`;
 }
 /* 单个标签的月度图表 */
+/* 单个标签的月度图表 */
 function renderCalChart(){
   const sheet=$('calSheet');
   const [y,m]=calMonth.split('-').map(Number);
@@ -2353,44 +2354,48 @@ function renderCalChart(){
   const maxD=Math.max(...daily,30), maxH=Math.max(...hourly,30);
   const maxIdx=daily.indexOf(Math.max(...daily));
   const maxHIdx=hourly.indexOf(Math.max(...hourly));
-
+  
   // ★ 计算月平均时长（仅统计有记录的日期）
   const daysWithRecord = daily.filter(v => v > 0);
   const total = daily.reduce((a,b)=>a+b, 0);
   const avg = daysWithRecord.length > 0 ? Math.round(total / daysWithRecord.length) : 0;
-     
+  
   /* 折线图 */
-  const W1=340,H1=130,P=26;
-  const px=i=>P+i/(days-1)*(W1-2*P), py=v=>H1-18-v/maxD*(H1-36);
+  const W1=340,H1=140,P=26;
+  const px=i=>P+i/(days-1)*(W1-2*P), py=v=>H1-22-v/maxD*(H1-44);
   let pts=daily.map((v,i)=>`${px(i)},${py(v)}`).join(' ');
   let line=`<svg viewBox="0 0 ${W1} ${H1}" width="100%" id="lineSvg">
-    <line x1="${P}" y1="${H1-18}" x2="${W1-P+8}" y2="${H1-18}" stroke="var(--line)" stroke-width="1"/>
-    <polyline points="${pts}" fill="none" stroke="${c.color}" stroke-width="2"/>`;
+    <line x1="${P}" y1="${H1-22}" x2="${W1-P+8}" y2="${H1-22}" stroke="var(--line)" stroke-width="1"/>
+    <polyline points="${pts}" fill="none" stroke="${c.color}" stroke-width="2.5"/>`;
   daily.forEach((v,i)=>{
     line+=`<circle cx="${px(i)}" cy="${py(v)}" r="5.5" fill="${c.color}" fill-opacity="${v?1:.25}" data-d="${i+1}" data-v="${v}" style="cursor:pointer"/>`;
   });
   [1,Math.round(days/2),days].forEach(d=>{
-    line+=`<text x="${px(d-1)}" y="${H1-5}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${d}日</text>`;
+    line+=`<text x="${px(d-1)}" y="${H1-6}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${d}日</text>`;
   });
+  // ★ 在折线图上添加平均线
+  if(avg > 0){
+    const avgY = py(avg);
+    line+=`<line x1="${P}" y1="${avgY}" x2="${W1-P}" y2="${avgY}" stroke="${c.color}" stroke-width="1.2" stroke-dasharray="6 4" opacity="0.6"/>`;
+    line+=`<text x="${W1-P+4}" y="${avgY+3}" text-anchor="start" font-size="9" fill="${c.color}" opacity="0.7">平均 ${fmtDur(avg)}</text>`;
+  }
   line+=`</svg>`;
-
-
-     
+  
   /* 时段柱状图 */
-  const W2=340,H2=120,P2=20;
+  const W2=340,H2=130,P2=20;
   const bw=(W2-2*P2)/24;
   let bars=`<svg viewBox="0 0 ${W2} ${H2}" width="100%" id="barSvg">
-    <line x1="${P2}" y1="${H2-18}" x2="${W2-P2+6}" y2="${H2-18}" stroke="var(--line)" stroke-width="1"/>`;
+    <line x1="${P2}" y1="${H2-22}" x2="${W2-P2+6}" y2="${H2-22}" stroke="var(--line)" stroke-width="1"/>`;
   hourly.forEach((v,h)=>{
-    const bh=v/maxH*(H2-38);
-    bars+=`<rect x="${P2+h*bw+1}" y="${H2-18-bh}" width="${bw-2}" height="${Math.max(bh,0.5)}" fill="${c.color}" fill-opacity="${v?0.9:.15}" rx="1.5"/>`;
-    bars+=`<rect class="hit" x="${P2+h*bw}" y="0" width="${bw}" height="${H2-18}" fill="transparent" data-h="${h}" data-v="${v}" style="cursor:pointer"/>`;
+    const bh=v/maxH*(H2-44);
+    bars+=`<rect x="${P2+h*bw+1}" y="${H2-22-bh}" width="${bw-2}" height="${Math.max(bh,0.5)}" fill="${c.color}" fill-opacity="${v?0.9:.15}" rx="1.5"/>`;
+    bars+=`<rect class="hit" x="${P2+h*bw}" y="0" width="${bw}" height="${H2-22}" fill="transparent" data-h="${h}" data-v="${v}" style="cursor:pointer"/>`;
   });
   [0,6,12,18,24].forEach(h=>{
-    bars+=`<text x="${P2+h*bw}" y="${H2-5}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${h}</text>`;
+    bars+=`<text x="${P2+h*bw}" y="${H2-6}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${h}</text>`;
   });
   bars+=`</svg>`;
-
+  
   // ★ 显示平均时长信息
   let avgHtml = '';
   if(avg > 0){
@@ -2399,8 +2404,7 @@ function renderCalChart(){
       ${total > 0 ? `· 月累计 <span style="font-weight:600;color:${c.color}">${fmtDur(total)}</span>` : ''}
     </div>`;
   }
-
-     
+  
   sheet.innerHTML=`
     <div class="calhead">
       <button class="back" id="chBack">‹ 返回</button>
@@ -2411,7 +2415,8 @@ function renderCalChart(){
       <h4>每天的时长（点圆点看具体数值）</h4>
       <div class="tipline" id="chTip">${m}月${maxIdx+1}日 · ${fmtDur(daily[maxIdx])}</div>
       <div class="chartbox">${line}</div>
-      <h4>累计时长的时段分布（0–24 时，点柱子看数值）</h4>
+      ${avgHtml}
+      <h4 style="margin-top:12px">累计时长的时段分布（0–24 时，点柱子看数值）</h4>
       <div class="tipline" id="chTip2">${maxHIdx}–${maxHIdx+1} 时 · ${fmtDur(hourly[maxHIdx])}</div>
       <div class="chartbox">${bars}</div>
     </div>`;
