@@ -1779,10 +1779,12 @@ function renderCal(){
   html+=`<div class="caltotals"><h4>本月累计时长（点标签看趋势图）</h4>`;
   if(!rows.length) html+=`<div style="font-size:12.5px;color:var(--ink-2);padding:4px">本月还没有记录</div>`;
   rows.forEach(r=>{
-    html+=`<div class="trow" data-tag="${r.id}">
+    // ★ 睡眠标签不展开（不添加 data-tag 属性）
+    const isSleep = r.id === 'sleep';
+    html+=`<div class="trow" ${isSleep ? '' : `data-tag="${r.id}"`} style="${isSleep ? 'cursor:default' : ''}">
       <span class="name"><span class="dot" style="background:${r.color}"></span>${r.name}</span>
       <div class="track"><div class="fill" style="width:${r.v/maxV*100}%;background:${r.color}"></div></div>
-      <span class="val">${fmtDur(r.v)}</span><span class="arrow">›</span>
+      <span class="val">${fmtDur(r.v)}</span>${isSleep ? '' : '<span class="arrow">›</span>'}
     </div>`;
   });
   html+=`</div>`;
@@ -1804,8 +1806,12 @@ function renderCal(){
       if(calMode==='diary'){ openDayDiary(cell.dataset.day); return; }
       viewDate=cell.dataset.day; selRec=null; closeCal(); switchPage('record'); renderAll();
     });
-  sheet.querySelectorAll('.trow').forEach(row=>
-    row.onclick=()=>{ calTag=row.dataset.tag; renderCal(); });
+  sheet.querySelectorAll('.trow').forEach(row=>{
+    // ★ 只有带有 data-tag 的标签才可点击（睡眠无 data-tag）
+    if(row.dataset.tag){
+      row.onclick=()=>{ calTag=row.dataset.tag; renderCal(); };
+    }
+  });
   const dta=$('diaryTa');
   dta.oninput=()=>{ S.diary[calMonth]=dta.value; save(); };
   easeKeyboard(dta);
@@ -1863,6 +1869,14 @@ function renderWeek(){
     el.onclick=()=>{ viewDate=el.dataset.day; selRec=null; closeCal(); switchPage('record'); renderAll(); });
   sheet.querySelectorAll('.wkblock, .wkstar').forEach(b=>
     b.onclick=()=>{ $('wkTip').textContent=b.dataset.tip; });
+       // ★ 周视图标签点击看趋势图（在 sheet.innerHTML 之后添加）
+  sheet.querySelectorAll('.trow[data-tag][data-week="true"]').forEach(row=>{
+    row.onclick = ()=>{
+      const tagId = row.dataset.tag;
+      // 使用周数据生成趋势图
+      renderWeekChart(tagId);
+    };
+  });
   sheet.querySelectorAll('.wkblock.plan').forEach(b=>{
     let lp=null;
     b.addEventListener('pointerdown',()=>{
@@ -1886,6 +1900,92 @@ function renderWeek(){
   const wta=$('weekTa');
   wta.oninput=()=>{ S.weekDiary[calWeekStart]=wta.value; save(); };
   easeKeyboard(wta);
+}
+/* ═══════════ 周趋势图（点击周视图标签查看） ═══════════ */
+function renderWeekChart(tagId){
+  const sheet = $('calSheet');
+  // 使用全局 calWeekStart
+  const days = [...Array(7)].map((_,i)=>shiftDay(calWeekStart,i));
+  
+  // 获取该标签本周每日数据
+  const daily = [];
+  let maxV = 0;
+  days.forEach((k, idx)=>{
+    let v = 0;
+    (S.recs[k]||[]).forEach(r=>{
+      const match = tagId === '_none' ? r.cat==null : r.cat === tagId;
+      if(!match || isMarker(r)) return;
+      recSegs(r,k).forEach(([s,e])=>v+=e-s);
+    });
+    if(tagId === 'sleep'){
+      implicitSleepSegs(k).forEach(([s,e])=>v+=e-s);
+    }
+    daily.push(v);
+    if(v > maxV) maxV = v;
+  });
+  
+  const c = tagId === '_none' ? {name:'未分类', color:'#C9C4B6'} : catById(tagId);
+  if(!c){ toast('标签不存在'); return; }
+  
+  // 返回按钮
+  const backHtml = `
+    <div class="calhead">
+      <button class="back" id="weekChartBack">‹ 返回周视图</button>
+      <div class="mtitle" style="flex:1;text-align:center">${c.name} · 本周趋势</div>
+      <button class="close" id="weekChartClose">✕</button>
+    </div>
+  `;
+  
+  // 绘制柱状图（7天）
+  const W=340, H=130, P=30;
+  const maxDisplay = Math.max(maxV, 30);
+  const bw = (W - 2*P) / 7;
+  const py = v => H - 18 - (v / maxDisplay) * (H - 38);
+  const WD = ['一','二','三','四','五','六','日'];
+  
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  // 网格线
+  const steps = [0, 25, 50, 75, 100];
+  steps.forEach(pct => {
+    const y = H - 18 - (pct/100) * (H - 38);
+    const label = Math.round(maxDisplay * pct / 100);
+    svg += `<line x1="${P}" y1="${y}" x2="${W-P}" y2="${y}" stroke="var(--line)" stroke-width="0.8"/>`;
+    svg += `<text x="${P-4}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--ink-2)">${fmtDur(label)}</text>`;
+  });
+  // 柱子
+  daily.forEach((v, i) => {
+    const x = P + i * bw + 2;
+    const bh = (H - 18) - py(v);
+    svg += `<rect x="${x}" y="${py(v)}" width="${bw-4}" height="${Math.max(bh, 1)}" 
+                fill="${c.color}" rx="2" opacity="${v>0?0.85:0.2}"/>`;
+    const dd = keyToDate(days[i]);
+    svg += `<text x="${x + bw/2}" y="${H-5}" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">${dd.getDate()}</text>`;
+  });
+  // 合计值
+  const total = daily.reduce((a,b)=>a+b, 0);
+  svg += `<text x="${W-P}" y="16" text-anchor="end" font-size="11" fill="${c.color}" font-weight="600">合计 ${fmtDur(total)}</text>`;
+  svg += `</svg>`;
+  
+  // 每日明细
+  let detailHtml = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:var(--ink-2)">`;
+  days.forEach((k, i)=>{
+    const dd = keyToDate(k);
+    detailHtml += `<span style="background:var(--card);padding:2px 8px;border-radius:4px;border:1px solid var(--line)">
+      ${dd.getMonth()+1}/${dd.getDate()} ${fmtDur(daily[i])}
+    </span>`;
+  });
+  detailHtml += `</div>`;
+  
+  sheet.innerHTML = backHtml + `
+    <div class="calchart">
+      <div class="chartbox">${svg}</div>
+      ${detailHtml}
+    </div>
+  `;
+  
+  // 返回按钮
+  $('#weekChartBack').onclick = ()=>{ renderCal(); };
+  $('#weekChartClose').onclick = closeCal;
 }
 function weekGrid(days){
   const H=24*weekZoom;
@@ -1978,17 +2078,22 @@ function weekTotals(days){
     implicitSleepSegs(k).forEach(([s,e])=>{ mins['sleep']=(mins['sleep']||0)+(e-s); });
   });
   const rows=[];
-  S.cats.forEach(c=>{ if(mins[c.id]) rows.push({name:c.name,color:c.color,v:mins[c.id]}); });
-  if(mins['_none']) rows.push({name:'未分类',color:'#C9C4B6',v:mins['_none']});
+  S.cats.forEach(c=>{ if(mins[c.id]) rows.push({id:c.id, name:c.name, color:c.color, v:mins[c.id]}); });
+  if(mins['_none']) rows.push({id:'_none', name:'未分类', color:'#C9C4B6', v:mins['_none']});
   rows.sort((a,b)=>b.v-a.v);
   if(!rows.length) return `<div class="caltotals"><h4>本周累计时长</h4><div style="font-size:12.5px;color:var(--ink-2);padding:4px">本周还没有记录</div></div>`;
   const total=7*1440, maxV=rows[0].v;
-  return `<div class="caltotals"><h4>本周累计时长</h4>`+rows.map(r=>`
-    <div class="trow" style="cursor:default">
+  
+  return `<div class="caltotals"><h4>本周累计时长（点标签看趋势图）</h4>`+rows.map(r=>{
+    // ★ 睡眠标签不展开，其他可点击
+    const isSleep = r.id === 'sleep';
+    return `<div class="trow" ${isSleep ? '' : `data-tag="${r.id}" data-week="true"`} style="${isSleep ? 'cursor:default' : ''}">
       <span class="name"><span class="dot" style="background:${r.color}"></span>${r.name}</span>
       <div class="track"><div class="fill" style="width:${r.v/maxV*100}%;background:${r.color}"></div></div>
       <span class="val">${fmtDur(r.v)} · ${Math.round(r.v/total*100)}%</span>
-    </div>`).join('')+`</div>`;
+      ${isSleep ? '' : '<span class="arrow">›</span>'}
+    </div>`;
+  }).join('')+`</div>`;
 }
 function weekMarkerChart(days,catId){
   const color = catId==='wake' ? '#C2543B' : '#1F7A5C';
