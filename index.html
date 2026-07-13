@@ -2212,7 +2212,12 @@ function sleepChartWeek(days){
     const v=sleepDurOf(k);
     if(v!=null){ const dd=keyToDate(k); pts.push({x:i, full:`${dd.getMonth()+1}月${dd.getDate()}日`, v}); }
   });
-  return durBars(pts, 7, 'slpW', WD.map((t,i)=>({i,t})));
+  
+  // ★ 计算平均睡眠时长
+  const validPts = pts.filter(p => p.v > 0);
+  const avg = validPts.length > 0 ? Math.round(pts.reduce((s,p)=>s+p.v,0) / validPts.length) : 0;
+  
+  return durBars(pts, 7, 'slpW', WD.map((t,i)=>({i,t})), avg);
 }
 function durBars(pts, n, tipId, xlabels){
   if(!pts.length) return `<div class="chartbox" style="text-align:center;color:var(--ink-2);font-size:12.5px;padding:14px 0">还没有可配对的入睡与起床打点</div>`;
