@@ -1100,52 +1100,72 @@ function renderRecs(){
         </div>`;
       const ta = ex.querySelector('textarea');
       const cnt = ex.querySelector('.cnt');
-      ta.onclick = ev=>ev.stopPropagation();
-      ta.oninput = ()=>{
-        if(r.idea){
-          r.note = ta.value;
-          cnt.textContent = r.note.length+'字';
-        } else {
-          const over = ta.value.length>150;
-          r.note = ta.value.slice(0,150);
-          cnt.textContent = ta.value.length+'/150'+(over?' 超出不保存':'');
-          cnt.classList.toggle('over', over);
-          ta.classList.toggle('over', over);
-        }
-        save();
-      };
-      // 话题标签输入
-      const tagInput = ex.querySelector('.tag-input');
-      if(tagInput){
-        tagInput.oninput = ()=>{
-          const raw = tagInput.value;
-          const tags = raw.match(/#[\u4e00-\u9fa5a-zA-Z0-9_]{1,20}/g) || [];
-          r.ideaTags = tags.map(t=>t.slice(1));
-          save();
-        };
-      }
-      // 公开/不公开切换
-      const pubToggle = ex.querySelector('.public-toggle');
-       if(pubToggle){
-         pubToggle.onclick = (ev)=>{
-           ev.stopPropagation();  // 阻止事件冒泡到父元素
-         };
-         pubToggle.onchange = ()=>{
-           r.isPublic = pubToggle.checked;
-           save();
-           renderRecs();
-         };
-       }
-      easeKeyboard(ta);
-      ex.querySelector('.delbtn').onclick = async ev=>{
-        ev.stopPropagation();
-        if(!await uiConfirm('删除这条记录？')) return;
-        const arr = dayRecs(viewDate);
-        arr.splice(arr.indexOf(r),1);
-        selRec=null; save(); renderAll();
-      };
-      el.appendChild(ex);
+         
+  // 阻止事件冒泡，让 textarea 可正常编辑
+  ta.onclick = ev=>ev.stopPropagation();
+  ta.onmousedown = ev=>ev.stopPropagation();
+  ta.oninput = ()=>{
+    if(r.idea){
+      r.note = ta.value;
+      cnt.textContent = r.note.length+'字';
+    } else {
+      const over = ta.value.length>150;
+      r.note = ta.value.slice(0,150);
+      cnt.textContent = ta.value.length+'/150'+(over?' 超出不保存':'');
+      cnt.classList.toggle('over', over);
+      ta.classList.toggle('over', over);
     }
+    save();
+  };
+  
+  // ★ 话题标签输入 - 修复输入问题
+  const tagInput = ex.querySelector('.tag-input');
+  if(tagInput){
+    tagInput.onclick = (ev)=>ev.stopPropagation();
+    tagInput.onmousedown = (ev)=>ev.stopPropagation();
+    tagInput.oninput = ()=>{
+      const raw = tagInput.value;
+      const tags = raw.match(/#[\u4e00-\u9fa5a-zA-Z0-9_]{1,20}/g) || [];
+      r.ideaTags = tags.map(t=>t.slice(1));
+      save();
+    };
+  }
+  
+  // ★ 公开/不公开切换 - 修复点击问题
+  const pubToggle = ex.querySelector('.public-toggle');
+  if(pubToggle){
+    pubToggle.onclick = (ev)=>{
+      ev.stopPropagation();
+    };
+    pubToggle.onmousedown = (ev)=>{
+      ev.stopPropagation();
+    };
+    pubToggle.onchange = ()=>{
+      r.isPublic = pubToggle.checked;
+      save();
+      // 刷新显示（更新 durStr 中的 🔒/🌍 图标）
+      renderRecs();
+    };
+  }
+  
+  easeKeyboard(ta);
+  
+  // 删除按钮
+  ex.querySelector('.delbtn').onclick = async ev=>{
+    ev.stopPropagation();
+    if(!await uiConfirm('删除这条记录？')) return;
+    const arr = dayRecs(viewDate);
+    const idx = arr.findIndex(item => item.id === r.id);
+    if(idx !== -1){
+      arr.splice(idx, 1);
+      selRec = null;
+      save();
+      renderAll();
+    }
+  };
+  
+  el.appendChild(ex);
+}
     el.onclick = ()=>{
       if(el._lpFired){ el._lpFired=false; return; }
       selRec = (selRec===r.id ? null : r.id); renderRecs();
