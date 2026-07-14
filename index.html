@@ -2236,7 +2236,7 @@ function durBars(pts, n, tipId, xlabels, avgValue){
   const bw=(W-P-10)/n;
   const py=v=>H-24 - v/topV*(H-48);
   
-  // ★ 计算有效天数
+  // ★ 计算有效天数和平均值
   const validPts = pts.filter(p => p.v > 0);
   const avg = avgValue !== undefined ? avgValue : (validPts.length > 0 ? Math.round(pts.reduce((s,p)=>s+p.v,0) / validPts.length) : 0);
   
@@ -2249,15 +2249,10 @@ function durBars(pts, n, tipId, xlabels, avgValue){
   }
   svg+=`<line x1="${P}" y1="${H-24}" x2="${W-8}" y2="${H-24}" stroke="var(--line)" stroke-width="1"/>`;
   
-  // ★ 绘制柱子
+  // ★ 绘制柱子（不在上方显示时间）
   pts.forEach(p=>{
     const bh=(H-24)-py(p.v);
-    svg+=`<rect class="mkdot" x="${P+p.x*bw+2}" y="${py(p.v)}" width="${Math.max(bw-4,3)}" height="${bh}" rx="2.5" fill="${col}" fill-opacity=".85" data-t="${tipId}" data-label="${p.full} · ${fmtDur(p.v)}" style="cursor:pointer"/>`;
-    
-    // ★★ 在柱子上方显示具体数值（如果柱子够高）
-    if(bh > 20){
-      svg+=`<text x="${P+p.x*bw+bw/2}" y="${py(p.v)-4}" text-anchor="middle" font-size="8.5" fill="${col}" font-weight="500">${fmtDur(p.v)}</text>`;
-    }
+    svg+=`<rect class="mkdot" x="${P+p.x*bw+2}" y="${py(p.v)}" width="${Math.max(bw-4,3)}" height="${Math.max(bh, 1)}" rx="2.5" fill="${col}" fill-opacity=".85" data-t="${tipId}" data-label="${p.full} · ${fmtDur(p.v)}" style="cursor:pointer"/>`;
   });
   
   // ★★ 绘制平均线（如果有平均值且 > 0）
