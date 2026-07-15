@@ -3249,10 +3249,11 @@ function applyRel(){
       if(rel === 'in'){
         m.color.set(0x6FA8FF);   // 蓝色：关注我的
         m.opacity=0.8;
-        // m.blending=THREE.AdditiveBlending;
+        m.blending=THREE.AdditiveBlending;
       } else if(rel === 'out'){
-        m.color.set(0xB0B8C8);   // 银灰色：我关注的
+        m.color.set(0x6FA8FF);   // 蓝色：我关注的
         m.opacity=0.8;
+        m.blending=THREE.AdditiveBlending;
       } else {
         m.color.set(0x8892A8);   // 灰色：其他关系
         m.opacity=0.55;
