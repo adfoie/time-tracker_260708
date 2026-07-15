@@ -2865,14 +2865,8 @@ function socHead(title){
   return `<div class="calhead"><div class="mtitle" style="flex:1">${title}</div><button class="close" id="socClose">✕</button></div>`;
 }
 async function openSoc(view, payload){
-    if(socOpen){
-    closeSoc();
-    await new Promise(r => setTimeout(r, 300));
-  }
-  
   const sh=$('socSheet');
   $('socOverlay').classList.add('show');
-  socOpen = true;  // ★ 标记已打开
   sh.innerHTML=socHead('加载中…');
   try{
     if(view==='found'){
@@ -2966,10 +2960,6 @@ async function openSoc(view, payload){
     sh.innerHTML=socHead('出错了')+`<div class="soctip">加载失败：${escHtml((e&&e.message)||'')}<br>可能是网络问题，或还没在 Supabase 执行社交版 SQL</div>`;
     const cl=sh.querySelector('#socClose'); if(cl) cl.onclick=closeSoc;
   }
-  function closeSoc(){ 
-  $('socOverlay').classList.remove('show');
-  socOpen = false;  // ★ 重置状态
-}
 }
 function fmtStamp(iso){
   if(!iso) return '';
@@ -3429,191 +3419,52 @@ function animatePlanet(){
   P.renderer.render(P.scene, P.camera);
   P.raf=requestAnimationFrame(animatePlanet);
 }
-// function bindPlanetInput(cvs){
-//   const ray=new THREE.Raycaster(), v2=new THREE.Vector2();
-//   const tmpV=new THREE.Vector3(), plane=new THREE.Plane();
-//   const ptrs=new Map();
-//   let sx=0, sy=0, moved=0, hitNode=null, pinchD=0;
-//   const toNDC=(x,y)=>{
-//     const r=cvs.getBoundingClientRect();
-//     v2.x=((x-r.left)/r.width)*2-1;
-//     v2.y=-((y-r.top)/r.height)*2+1;
-//   };
-//   const pick=(x,y)=>{
-//     toNDC(x,y);
-//     ray.setFromCamera(v2, P.camera);
-//     const hits=ray.intersectObjects(P.nodes.map(g=>g.userData.mesh));
-//     return hits.length ? hits[0].object.parent : null;
-//   };
-//   cvs.addEventListener('pointerdown',e=>{
-//     ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-//     cvs.setPointerCapture(e.pointerId);
-//     if(ptrs.size===2){                             // 双指缩放开始
-//       const [a,b]=[...ptrs.values()];
-//       pinchD=Math.hypot(a.x-b.x,a.y-b.y);
-//       P.pinch=true; P.rotating=false; P.dragGrp=null;
-//       return;
-//     }
-//     sx=e.clientX; sy=e.clientY; moved=0;
-//     hitNode=pick(e.clientX,e.clientY);
-//     P.dragGrp = hitNode || null;
-//     P.rotating = !hitNode;
-//   });
-//   cvs.addEventListener('pointermove',e=>{
-//     if(!ptrs.has(e.pointerId)) return;
-//     ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-//     if(P.pinch && ptrs.size===2){                  // 双指缩放
-//       const [a,b]=[...ptrs.values()];
-//       const d=Math.hypot(a.x-b.x,a.y-b.y);
-//       if(pinchD>0){
-//         P.camera.position.z=Math.max(55, Math.min(400, P.camera.position.z*pinchD/d));
-//       }
-//       pinchD=d;
-//       return;
-//     }
-//     const dx=e.clientX-sx, dy=e.clientY-sy;
-//     moved=Math.max(moved, Math.abs(dx)+Math.abs(dy));
-//     if(P.dragGrp){                                 // 拖动节点：连线自动跟随
-//       toNDC(e.clientX,e.clientY);
-//       ray.setFromCamera(v2, P.camera);
-//       P.dragGrp.getWorldPosition(tmpV);
-//       plane.setFromNormalAndCoplanarPoint(
-//         P.camera.getWorldDirection(new THREE.Vector3()).negate(), tmpV);
-//       const hitP=new THREE.Vector3();
-//       if(ray.ray.intersectPlane(plane, hitP)){
-//         P.group.worldToLocal(hitP);
-//         P.dragGrp.position.copy(hitP);
-//         P.dragGrp.userData.baseY=hitP.y;
-//       }
-//     } else if(P.rotating){                         // 拖动空白：旋转星系
-//       P.group.rotation.y += dx*0.005;
-//       P.group.rotation.x = Math.max(-0.9, Math.min(0.9, P.group.rotation.x + dy*0.003));
-//       sx=e.clientX; sy=e.clientY;
-//     }
-//   });
-//   const up=e=>{
-//     ptrs.delete(e.pointerId);
-//     if(ptrs.size<2) P.pinch=false;
-//     if(ptrs.size>0) return;
-//     if(moved<8 && hitNode){                        // 轻点节点：看公开 idea（含自己）
-//       const u=hitNode.userData.mesh.userData;
-//       openSoc('person',{uid:u.uid, nm:u.nm});
-//     }
-//     P.dragGrp=null; P.rotating=false; hitNode=null;
-//   };
-//   cvs.addEventListener('pointerup',up);
-//   cvs.addEventListener('pointercancel',up);
-//   cvs.addEventListener('wheel',e=>{                // 电脑滚轮缩放
-//     e.preventDefault();
-//     P.camera.position.z=Math.max(55, Math.min(400, P.camera.position.z*(e.deltaY>0?1.08:0.93)));
-//   },{passive:false});
-//   cvs.addEventListener('contextmenu',e=>e.preventDefault());
-// }
-
-
 function bindPlanetInput(cvs){
   const ray=new THREE.Raycaster(), v2=new THREE.Vector2();
   const tmpV=new THREE.Vector3(), plane=new THREE.Plane();
   const ptrs=new Map();
   let sx=0, sy=0, moved=0, hitNode=null, pinchD=0;
-  let clickPending = false;  // ★ 防止重复点击
-  let clickTimeout = null;   // ★ 防抖定时器
-  
   const toNDC=(x,y)=>{
     const r=cvs.getBoundingClientRect();
     v2.x=((x-r.left)/r.width)*2-1;
     v2.y=-((y-r.top)/r.height)*2+1;
   };
-  
   const pick=(x,y)=>{
     toNDC(x,y);
     ray.setFromCamera(v2, P.camera);
-    const meshes = P.nodes.map(g => g.userData.mesh).filter(m => m !== undefined);
-    const hits=ray.intersectObjects(meshes);
-    if(hits.length){
-      const mesh = hits[0].object;
-      const parent = P.nodes.find(g => g.userData.mesh === mesh);
-      return parent || null;
-    }
-    return null;
+    const hits=ray.intersectObjects(P.nodes.map(g=>g.userData.mesh));
+    return hits.length ? hits[0].object.parent : null;
   };
-  
-  // ★ 处理点击节点的逻辑（防重复）
-  const handleNodeClick = (node) => {
-    if(clickPending) return;  // ★ 正在处理中，忽略
-    clickPending = true;
-    
-    const u = node.userData.mesh.userData;
-    if(u && u.uid){
-      // ★ 延迟打开，确保其他事件处理完毕
-      clearTimeout(clickTimeout);
-      clickTimeout = setTimeout(() => {
-        openSoc('person', {uid: u.uid, nm: u.nm});
-        // ★ 延迟重置状态，防止快速重复点击
-        setTimeout(() => {
-          clickPending = false;
-        }, 500);
-      }, 100);
-    } else {
-      clickPending = false;
-    }
-  };
-  
-  // ★ 触摸/鼠标按下
-  const onPointerDown = (e) => {
-    // ★ 阻止默认行为和冒泡
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    if(clientX === undefined) return;
-    
-    const id = e.pointerId || 0;
-    ptrs.set(id, {x: clientX, y: clientY});
-    if(e.pointerId !== undefined) cvs.setPointerCapture(e.pointerId);
-    
-    if(ptrs.size === 2){
+  cvs.addEventListener('pointerdown',e=>{
+    ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    cvs.setPointerCapture(e.pointerId);
+    if(ptrs.size===2){                             // 双指缩放开始
       const [a,b]=[...ptrs.values()];
       pinchD=Math.hypot(a.x-b.x,a.y-b.y);
       P.pinch=true; P.rotating=false; P.dragGrp=null;
       return;
     }
-    
-    sx=clientX; sy=clientY; moved=0;
-    hitNode = pick(clientX, clientY);
+    sx=e.clientX; sy=e.clientY; moved=0;
+    hitNode=pick(e.clientX,e.clientY);
     P.dragGrp = hitNode || null;
     P.rotating = !hitNode;
-  };
-  
-  // ★ 触摸/鼠标移动
-  const onPointerMove = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    if(clientX === undefined) return;
-    
-    const id = e.pointerId || 0;
-    if(!ptrs.has(id)) return;
-    ptrs.set(id, {x: clientX, y: clientY});
-    
-    if(P.pinch && ptrs.size === 2){
+  });
+  cvs.addEventListener('pointermove',e=>{
+    if(!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(P.pinch && ptrs.size===2){                  // 双指缩放
       const [a,b]=[...ptrs.values()];
       const d=Math.hypot(a.x-b.x,a.y-b.y);
       if(pinchD>0){
-        P.camera.position.z=Math.max(55, Math.min(400, P.camera.position.z * pinchD / d));
+        P.camera.position.z=Math.max(55, Math.min(400, P.camera.position.z*pinchD/d));
       }
       pinchD=d;
       return;
     }
-    
-    const dx=clientX-sx, dy=clientY-sy;
+    const dx=e.clientX-sx, dy=e.clientY-sy;
     moved=Math.max(moved, Math.abs(dx)+Math.abs(dy));
-    
-    if(P.dragGrp){
-      toNDC(clientX, clientY);
+    if(P.dragGrp){                                 // 拖动节点：连线自动跟随
+      toNDC(e.clientX,e.clientY);
       ray.setFromCamera(v2, P.camera);
       P.dragGrp.getWorldPosition(tmpV);
       plane.setFromNormalAndCoplanarPoint(
@@ -3624,56 +3475,31 @@ function bindPlanetInput(cvs){
         P.dragGrp.position.copy(hitP);
         P.dragGrp.userData.baseY=hitP.y;
       }
-    } else if(P.rotating){
+    } else if(P.rotating){                         // 拖动空白：旋转星系
       P.group.rotation.y += dx*0.005;
       P.group.rotation.x = Math.max(-0.9, Math.min(0.9, P.group.rotation.x + dy*0.003));
-      sx=clientX; sy=clientY;
+      sx=e.clientX; sy=e.clientY;
     }
-  };
-  
-  // ★ 触摸/鼠标抬起
-  const onPointerUp = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const id = e.pointerId || 0;
-    ptrs.delete(id);
-    if(ptrs.size < 2) P.pinch = false;
-    if(ptrs.size > 0) return;
-    
-    // ★ 判断是否为点击（移动距离小于阈值）
-    if(moved < 20 && hitNode){
-      handleNodeClick(hitNode);
+  });
+  const up=e=>{
+    ptrs.delete(e.pointerId);
+    if(ptrs.size<2) P.pinch=false;
+    if(ptrs.size>0) return;
+    if(moved<8 && hitNode){                        // 轻点节点：看公开 idea（含自己）
+      const u=hitNode.userData.mesh.userData;
+      openSoc('person',{uid:u.uid, nm:u.nm});
     }
     P.dragGrp=null; P.rotating=false; hitNode=null;
   };
-  
-  // ★ 注册事件（只使用 pointer 事件，不再额外绑定 touch 事件避免重复）
-  cvs.addEventListener('pointerdown', onPointerDown);
-  cvs.addEventListener('pointermove', onPointerMove);
-  cvs.addEventListener('pointerup', onPointerUp);
-  cvs.addEventListener('pointercancel', onPointerUp);
-  
-  // ★ 鼠标滚轮缩放
-  cvs.addEventListener('wheel', (e) => {
+  cvs.addEventListener('pointerup',up);
+  cvs.addEventListener('pointercancel',up);
+  cvs.addEventListener('wheel',e=>{                // 电脑滚轮缩放
     e.preventDefault();
-    P.camera.position.z = Math.max(55, Math.min(400, P.camera.position.z * (e.deltaY > 0 ? 1.08 : 0.93)));
-  }, { passive: false });
-  
-  cvs.addEventListener('contextmenu', e => e.preventDefault());
-  
-  // ★ ★ 关键修复：阻止触摸事件冒泡到 overlay，防止面板关闭 ★ ★
-  cvs.addEventListener('touchstart', (e) => {
-    e.stopPropagation();  // ★ 阻止冒泡到 overlay
-  }, { passive: true });
-  
-  cvs.addEventListener('touchend', (e) => {
-    e.stopPropagation();  // ★ 阻止冒泡到 overlay
-  }, { passive: true });
+    P.camera.position.z=Math.max(55, Math.min(400, P.camera.position.z*(e.deltaY>0?1.08:0.93)));
+  },{passive:false});
+  cvs.addEventListener('contextmenu',e=>e.preventDefault());
 }
-     
 
-     
 /* ═══════════ 导出 / 导入 ═══════════ */
 function exportJSON(){
   const blob=new Blob([JSON.stringify({app:'time-tracker',version:2,exportedAt:new Date().toISOString(),cats:S.cats,recs:S.recs,diary:S.diary,dayDiary:S.dayDiary,todos:S.todos,weekDiary:S.weekDiary},null,2)],{type:'application/json'});
