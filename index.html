@@ -3195,8 +3195,8 @@ async function buildPlanet(){
     const mat = isMe
       ? new THREE.MeshStandardMaterial({color:0xCFE4FF, emissive:0x5FA8FF, emissiveIntensity:1.5})
       : gold
-      ? new THREE.MeshStandardMaterial({color:0xE8B84D, emissive:0xA855F7, emissiveIntensity:1.25})
-      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:1});
+      ? new THREE.MeshStandardMaterial({color:0xB5749F, emissive:0xB5749F, emissiveIntensity:1.25})
+      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:0.5});
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
