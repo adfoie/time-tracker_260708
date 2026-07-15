@@ -3193,15 +3193,15 @@ async function buildPlanet(){
     const fc=folCnt[p.id]||0;
     const rad = isMe ? 3.1 : Math.min(3.2 + Math.sqrt(fc)*1.15, 7.2);
     const mat = isMe
-      ? new THREE.MeshStandardMaterial({color:0xCFE4FF, emissive:0x5FA8FF, emissiveIntensity:1.5})
+      ? new THREE.MeshStandardMaterial({color:0x84BEFF, emissive:0x5FA8FF, emissiveIntensity:1.4}) // 情况 A：当前登录用户自己的节点
       : gold
-      ? new THREE.MeshStandardMaterial({color:0xB5749F, emissive:0xB5749F, emissiveIntensity:1.25})
-      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:0.5});
+      ? new THREE.MeshStandardMaterial({color:0xB379A5, emissive:0xB379A5, emissiveIntensity:1.25})  // 情况 B：有新 idea 的其他用户节点
+      : new THREE.MeshStandardMaterial({color:0x8788A3, emissive:0x8788A3, emissiveIntensity:0.6});   // 情况 C：普通其他用户节点 #8788a3
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
-    if(isMe) g.add(makeGlow('#5FA8FF', 34, false));          // 蓝色荧光 + 十字星芒
-    else if(gold) g.add(makeGlow('#B379A5', 18, false));    // 金紫荧光：今天有新 idea  #b379a5
+    if(isMe) g.add(makeGlow('#5FA8FF', 34, false));          // 蓝色荧光 + 十字星芒  #1557E8  正蓝色
+    else if(gold) g.add(makeGlow('#CC89FE', 25, false));    // 金紫荧光：今天有新 idea  #b379a5  18 为光晕的大小 false/true  为是否有十字
     const lb=nameSprite(p.display_name, isMe);
     lb.position.set(0, rad+5.2, 0);
     g.add(lb);
@@ -3222,7 +3222,7 @@ async function buildPlanet(){
   });
   P.scene.add(P.group);
   applyRel();
-  $('plHint').textContent='拖动空白旋转 · 拖动星球挪位置 · 双指/滚轮缩放 · 点星球看TA的公开idea';
+  $('plHint').textContent='拖动空白旋转 · 拖动星球挪位置 · 双指/滚轮缩放 · 长按星球看TA的公开idea';
   animatePlanet();
 }
 /* 关系筛选：紫色荧光连线 */
