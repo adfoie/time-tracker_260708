@@ -3195,8 +3195,8 @@ async function buildPlanet(){
     const mat = isMe
       ? new THREE.MeshStandardMaterial({color:0xCFE4FF, emissive:0x5FA8FF, emissiveIntensity:1.5})
       : gold
-      ? new THREE.MeshStandardMaterial({color:0xE8B84D, emissive:0xA855F7, emissiveIntensity:1.05})
-      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:.95});
+      ? new THREE.MeshStandardMaterial({color:0xE8B84D, emissive:0xA855F7, emissiveIntensity:1.25})
+      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:1});
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
@@ -3256,7 +3256,7 @@ function applyRel(){
         m.blending=THREE.AdditiveBlending;
       } else {
         m.color.set(0x8892A8);   // 灰色：其他关系
-        m.opacity=0.55;
+        m.opacity=0.75;
       }
       m.blending=THREE.AdditiveBlending;
     } else {
