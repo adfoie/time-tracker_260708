@@ -444,10 +444,34 @@ function ensureDefaults(s){
   return s;
 }
 let S = load();
-function load(){
+// v12-修改1：     
+// function load(){
+//   try{
+//     const raw = localStorage.getItem(lsKeyFor(curUid));
+//     if(raw){ const s = JSON.parse(raw); if(s && s.cats) return ensureDefaults(s); }
+//   }catch(e){}
+//   return ensureDefaults({ cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), recs:{}, diary:{}, mode:'all' });
+// }
+     function load(){
   try{
     const raw = localStorage.getItem(lsKeyFor(curUid));
-    if(raw){ const s = JSON.parse(raw); if(s && s.cats) return ensureDefaults(s); }
+    if(raw){ 
+      const s = JSON.parse(raw); 
+      if(s && s.cats) {
+        // ★ 数据迁移：将 isPublic 转为 pub
+        if(s.recs){
+          Object.keys(s.recs).forEach(k => {
+            (s.recs[k]||[]).forEach(r => {
+              if(r.idea && r.isPublic !== undefined) {
+                r.pub = r.isPublic;
+                delete r.isPublic;
+              }
+            });
+          });
+        }
+        return ensureDefaults(s); 
+      }
+    }
   }catch(e){}
   return ensureDefaults({ cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), recs:{}, diary:{}, mode:'all' });
 }
@@ -1115,7 +1139,7 @@ function renderRecs(){
       : running ? `${r.start} – <span class="live">···</span>`
       : `${r.start} – ${r.end==null?r.start:r.end}`;
     const durStr = marker ? (r.cat==='wake'?'起床':'入睡')
-      : idea ? `idea ${r.isPublic ? '🌍' : '🔒'} ${(r.ideaTags||[]).map(t=>'#'+t).join(' ')}`
+      : idea ? `idea ${r.pub ? '🌍' : '🔒'} ${(r.ideaTags||[]).map(t=>'#'+t).join(' ')}`  //v12 将 r.isPublic  改为 r.pub
       : r.plan ? `计划 ${fmtDur(recDur(r,viewDate))}`
       : running ? `<span class="live">${fmtDur(recDur(r,viewDate))} 计时中</span>`
       : fmtDur(recDur(r,viewDate));
@@ -1181,6 +1205,7 @@ function renderRecs(){
   // ★ 公开/不公开切换 - 修复点击问题
   const pubToggle = ex.querySelector('.public-toggle');
   if(pubToggle){
+    pubToggle.checked = r.pub || false;  // ★ 使用 r.pub v12-增加
     pubToggle.onclick = (ev)=>{
       ev.stopPropagation();
     };
@@ -1188,7 +1213,8 @@ function renderRecs(){
       ev.stopPropagation();
     };
     pubToggle.onchange = ()=>{
-      r.isPublic = pubToggle.checked;
+      // r.isPublic = pubToggle.checked;
+      r.pub = pubToggle.checked; //v12-将上述一行修改为该行
       save();
       // 刷新显示（更新 durStr 中的 🔒/🌍 图标）
       renderRecs();
