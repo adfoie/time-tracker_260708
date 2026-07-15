@@ -3201,7 +3201,7 @@ async function buildPlanet(){
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
     if(isMe) g.add(makeGlow('#5FA8FF', 34, false));          // 蓝色荧光 + 十字星芒
-    else if(gold) g.add(makeGlow('#C9A0FF', 18, false));    // 金紫荧光：今天有新 idea
+    else if(gold) g.add(makeGlow('#B379A5', 18, false));    // 金紫荧光：今天有新 idea  #b379a5
     const lb=nameSprite(p.display_name, isMe);
     lb.position.set(0, rad+5.2, 0);
     g.add(lb);
