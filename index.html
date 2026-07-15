@@ -3226,15 +3226,52 @@ async function buildPlanet(){
   animatePlanet();
 }
 /* 关系筛选：紫色荧光连线 */
+// function applyRel(){
+//   (P.lines||[]).forEach(ln=>{
+//     const m=ln.material;
+//     const lit = P.rel==='all' || ln.userData.rel===P.rel;
+//     if(lit){ m.color.set(0xC78BFF); m.opacity=.92; m.blending=THREE.AdditiveBlending; }
+//     else { m.color.set(0x8892A8); m.opacity=.35; m.blending=THREE.NormalBlending; }
+//     m.needsUpdate=true;
+//   });
+//   [['plRelIn','in'],['plRelOut','out'],['plRelAll','all']].forEach(([id,v])=>{
+//     const el=$(id); if(el) el.classList.toggle('on', P.rel===v);
+//   });
+// }
+
 function applyRel(){
   (P.lines||[]).forEach(ln=>{
     const m=ln.material;
-    const lit = P.rel==='all' || ln.userData.rel===P.rel;
-    if(lit){ m.color.set(0xC78BFF); m.opacity=.92; m.blending=THREE.AdditiveBlending; }
-    else { m.color.set(0x8892A8); m.opacity=.08; m.blending=THREE.NormalBlending; }
+    const rel = ln.userData.rel;
+    
+    if(P.rel === 'all'){
+      // 所有关系都显示，但不同关系用不同颜色
+      if(rel === 'in'){
+        m.color.set(0x6FA8FF);   // 蓝色：关注我的
+        m.opacity=0.6;
+      } else if(rel === 'out'){
+        m.color.set(0x5FBF8A);   // 绿色：我关注的
+        m.opacity=0.6;
+      } else {
+        m.color.set(0x8892A8);   // 灰色：其他关系
+        m.opacity=0.25;
+      }
+      m.blending=THREE.AdditiveBlending;
+    } else {
+      const lit = rel === P.rel;
+      if(lit){ 
+        m.color.set(0xC78BFF); 
+        m.opacity=0.92; 
+        m.blending=THREE.AdditiveBlending; 
+      } else { 
+        m.color.set(0x8892A8); 
+        m.opacity=0.30;   // ★ 调高
+        m.blending=THREE.NormalBlending; 
+      }
+    }
     m.needsUpdate=true;
   });
-  [['plRelIn','in'],['plRelOut','out'],['plRelAll','all']].forEach(([id,v])=>{
+    [['plRelIn','in'],['plRelOut','out'],['plRelAll','all']].forEach(([id,v])=>{
     const el=$(id); if(el) el.classList.toggle('on', P.rel===v);
   });
 }
