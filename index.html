@@ -3196,11 +3196,11 @@ async function buildPlanet(){
       ? new THREE.MeshStandardMaterial({color:0xCFE4FF, emissive:0x5FA8FF, emissiveIntensity:1.5})
       : gold
       ? new THREE.MeshStandardMaterial({color:0xE8B84D, emissive:0xA855F7, emissiveIntensity:1.05})
-      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:.45});/修改普通节点的发光强度 v12 emissiveIntensity
+      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:.45});
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
-    if(isMe) g.add(makeGlow('#5FA8FF', 34,false));          // 蓝色荧光 + 十字星芒 v12版本取消十字效果 true 改为false
+    if(isMe) g.add(makeGlow('#5FA8FF', 34, true));          // 蓝色荧光 + 十字星芒
     else if(gold) g.add(makeGlow('#C9A0FF', 18, false));    // 金紫荧光：今天有新 idea
     const lb=nameSprite(p.display_name, isMe);
     lb.position.set(0, rad+5.2, 0);
@@ -3225,43 +3225,17 @@ async function buildPlanet(){
   $('plHint').textContent='拖动空白旋转 · 拖动星球挪位置 · 双指/滚轮缩放 · 点星球看TA的公开idea';
   animatePlanet();
 }
-/* 关系筛选：紫色荧光连线 */  /-v12-修改自定义的关系连线效果
+/* 关系筛选：紫色荧光连线 */
 function applyRel(){
   (P.lines||[]).forEach(ln=>{
     const m=ln.material;
-    const rel = ln.userData.rel;
-    
-    if(P.rel === 'all'){
-      // 所有关系都显示，但不同关系用不同颜色
-      if(rel === 'in'){
-        m.color.set(0x6FA8FF);   // 蓝色：关注我的
-        m.opacity=0.6;
-      } else if(rel === 'out'){
-        m.color.set(0xC78BFF);   // 紫色：我关注的
-        m.opacity=0.6;
-      } else {
-        m.color.set(0x8892A8);   // 灰色：其他关系
-        m.opacity=0.25;
-      }
-      m.blending=THREE.AdditiveBlending;
-    } else {
-      const lit = rel === P.rel;
-      if(lit){ 
-        m.color.set(0xC78BFF); 
-        m.opacity=0.92; 
-        m.blending=THREE.AdditiveBlending; 
-      } else { 
-        m.color.set(0x8892A8); 
-        m.opacity=0.30;   // ★ 调高
-        m.blending=THREE.NormalBlending; 
-      }
-    }
+    const lit = P.rel==='all' || ln.userData.rel===P.rel;
+    if(lit){ m.color.set(0xC78BFF); m.opacity=.92; m.blending=THREE.AdditiveBlending; }
+    else { m.color.set(0x8892A8); m.opacity=.08; m.blending=THREE.NormalBlending; }
     m.needsUpdate=true;
   });
-       // ★ 添加按钮状态更新
   [['plRelIn','in'],['plRelOut','out'],['plRelAll','all']].forEach(([id,v])=>{
-    const el=$(id); 
-    if(el) el.classList.toggle('on', P.rel===v);
+    const el=$(id); if(el) el.classList.toggle('on', P.rel===v);
   });
 }
 function animatePlanet(){
