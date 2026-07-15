@@ -3200,7 +3200,7 @@ async function buildPlanet(){
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
-    if(isMe) g.add(makeGlow('#5FA8FF', 34, true));          // 蓝色荧光 + 十字星芒
+    if(isMe) g.add(makeGlow('#5FA8FF', 34, false));          // 蓝色荧光 + 十字星芒
     else if(gold) g.add(makeGlow('#C9A0FF', 18, false));    // 金紫荧光：今天有新 idea
     const lb=nameSprite(p.display_name, isMe);
     lb.position.set(0, rad+5.2, 0);
