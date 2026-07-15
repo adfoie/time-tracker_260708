@@ -386,16 +386,17 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 <!-- 日历盘 -->
 <div id="planetOverlay">
-  <div class="plhead">
-    <button class="plbtn on" id="plTabP">人物板块</button>
-    <button class="plbtn" id="plTabT">话题板块</button>
-    <button class="plbtn" id="plIdeaTg">idea 提醒：开</button>
-    <span style="flex:1"></span>
-    <button class="plbtn" id="plClose">✕</button>
-    <button class="plbtn" id="plRelIn">关注我的</button>
-    <button class="plbtn" id="plRelOut">我关注的</button>
-    <button class="plbtn on" id="plRelAll">所有关系</button>
-  </div>
+<div class="plhead">
+  <button class="plbtn on" id="plTabP">人物板块</button>
+  <button class="plbtn" id="plTabT">话题板块</button>
+  <button class="plbtn" id="plIdeaTg">idea 提醒：开</button>
+  <button class="plbtn on" id="plAutoRotate">🔄 自动旋转：开</button>  /v13 -添加该行代码
+  <span style="flex:1"></span>
+  <button class="plbtn" id="plClose">✕</button>
+  <button class="plbtn" id="plRelIn">关注我的</button>
+  <button class="plbtn" id="plRelOut">我关注的</button>
+  <button class="plbtn on" id="plRelAll">所有关系</button>
+</div>
   <canvas id="plCanvas"></canvas>
   <div class="plhint" id="plHint"></div>
 </div>
@@ -3056,7 +3057,7 @@ function exportTimeline(){
 }
 
 /* ═══════════ 3D 星球（Three.js） ═══════════ */
-const P = { on:false, showIdea:true, rel:'all', raf:0 };
+const P = { on:false, showIdea:true, rel:'all', raf:0,autoRotate: true }; /v13添加 autoRotate: true,
 function loadThree(cb){
   if(window.THREE){ cb(); return; }
   const s=document.createElement('script');
@@ -3196,7 +3197,7 @@ async function buildPlanet(){
       ? new THREE.MeshStandardMaterial({color:0xCFE4FF, emissive:0x5FA8FF, emissiveIntensity:1.5})
       : gold
       ? new THREE.MeshStandardMaterial({color:0xE8B84D, emissive:0xA855F7, emissiveIntensity:1.25})
-      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:1});
+      : new THREE.MeshStandardMaterial({color:0x8A93A6, emissive:0x39404F, emissiveIntensity:1.5});
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
@@ -3409,13 +3410,16 @@ function animatePlanet(){
   if(!P.on) return;
   const t=performance.now()/1000;
   P.nodes.forEach(g=>{
-    if(g===P.dragGrp) return;                    // 被拖动的节点不漂浮
+    if(g===P.dragGrp) return;
     g.position.y = g.userData.baseY + Math.sin(t*0.55 + g.userData.phase)*2.0;
   });
   P.lines.forEach(ln=>{
     ln.geometry.setFromPoints([ln.userData.a.position.clone(), ln.userData.b.position.clone()]);
   });
-  if(!P.rotating && !P.dragGrp && !P.pinch) P.group.rotation.y += 0.0011;
+  // ★ 根据 autoRotate 状态决定是否旋转
+  if(!P.rotating && !P.dragGrp && !P.pinch && P.autoRotate) {
+    P.group.rotation.y += 0.0011;
+  }
   P.renderer.render(P.scene, P.camera);
   P.raf=requestAnimationFrame(animatePlanet);
 }
@@ -3736,6 +3740,13 @@ $('plIdeaTg').onclick=()=>{
   P.showIdea=!P.showIdea;
   $('plIdeaTg').textContent='idea 提醒：'+(P.showIdea?'开':'关');
   if(P.on) buildPlanet();
+};
+// ★ 添加自动旋转开关事件
+$('plAutoRotate').onclick=()=>{
+  P.autoRotate = !P.autoRotate;
+  $('plAutoRotate').textContent = '🔄 自动旋转：' + (P.autoRotate ? '开' : '关');
+  $('plAutoRotate').classList.toggle('on', P.autoRotate);
+  toast(P.autoRotate ? '已开启自动旋转' : '已暂停自动旋转');
 };
 $('plRelIn').onclick=()=>{ P.rel='in'; applyRel(); };
 $('plRelOut').onclick=()=>{ P.rel='out'; applyRel(); };
