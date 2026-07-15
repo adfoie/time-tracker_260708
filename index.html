@@ -3215,7 +3215,7 @@ async function buildPlanet(){
            })
          // 普通节点：灰色系（低调）
          : new THREE.MeshStandardMaterial({
-             color: 0x8A93A6,           // 灰蓝色
+             color: 0x7588B1,           // 灰蓝色
              emissive: 0x445566,        // 暗灰色，几乎不发光
              emissiveIntensity: 0.35    // 极低强度，只微微可见
            });
@@ -3241,7 +3241,7 @@ async function buildPlanet(){
          else {
          // ★ 普通节点：小灰色光晕（大小 20）
          g.add(makeGlow('#618BBD', 20, false));
-         g.add(makeGlow('#6EAECF', 14, false));
+         // g.add(makeGlow('#6EAECF', 14, false));
 
        }
        // 普通节点：无光晕
