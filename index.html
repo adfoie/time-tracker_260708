@@ -3192,16 +3192,57 @@ async function buildPlanet(){
     /* 节点大小随粉丝数：√粉丝数 递增，上限约 3 倍面积 */
     const fc=folCnt[p.id]||0;
     const rad = isMe ? 3.1 : Math.min(3.2 + Math.sqrt(fc)*1.15, 7.2);
-    const mat = isMe
-      ? new THREE.MeshStandardMaterial({color:0x84BEFF, emissive:0x5FA8FF, emissiveIntensity:1.4}) // 情况 A：当前登录用户自己的节点
-      : gold
-      ? new THREE.MeshStandardMaterial({color:0xB379A5, emissive:0xB379A5, emissiveIntensity:1.25})  // 情况 B：有新 idea 的其他用户节点
-      : new THREE.MeshStandardMaterial({color:0x8788A3, emissive:0x8788A3, emissiveIntensity:0.6});   // 情况 C：普通其他用户节点 #8788a3
+    // const mat = isMe
+    //   ? new THREE.MeshStandardMaterial({color:0x5FA8FF, emissive:0x5FA8FF, emissiveIntensity:1.4}) // 情况 A：当前登录用户自己的节点
+    //   : gold
+    //   ? new THREE.MeshStandardMaterial({color:0xB379A5, emissive:0xB379A5, emissiveIntensity:1.25})  // 情况 B：有新 idea 的其他用户节点
+    //   : new THREE.MeshStandardMaterial({color:0x8788A3, emissive:0x8788A3, emissiveIntensity:0.3});   // 情况 C：普通其他用户节点 #8788a3
+
+
+       const mat = isMe
+         // 我的节点：蓝色系（高亮）
+         ? new THREE.MeshStandardMaterial({
+             color: 0x4A8FE4,           // 亮蓝色
+             emissive: 0x4A8FE4,        // 与 color 相同，保持色相
+             emissiveIntensity: 1.3     // 适中强度，不刺眼
+           })
+         : gold
+         // 有新 idea 的节点：紫色系（醒目）
+         ? new THREE.MeshStandardMaterial({
+             color: 0x9B59B6,           // 紫色
+             emissive: 0x9B59B6,        // 与 color 相同，保持色相
+             emissiveIntensity: 1     // 中等强度
+           })
+         // 普通节点：灰色系（低调）
+         : new THREE.MeshStandardMaterial({
+             color: 0x8A93A6,           // 灰蓝色
+             emissive: 0x445566,        // 暗灰色，几乎不发光
+             emissiveIntensity: 0.35    // 极低强度，只微微可见
+           });
+
+
     const sp=new THREE.Mesh(new THREE.SphereGeometry(rad, 22,22), mat);
     sp.userData={uid:p.id, nm:p.display_name, isMe};
     g.add(sp);
-    if(isMe) g.add(makeGlow('#5FA8FF', 34, false));          // 蓝色荧光 + 十字星芒  #1557E8  正蓝色
-    else if(gold) g.add(makeGlow('#CC89FE', 25, false));    // 金紫荧光：今天有新 idea  #b379a5  18 为光晕的大小 false/true  为是否有十字
+       
+    // if(isMe) g.add(makeGlow('#5FA8FF', 38, false));          // 蓝色荧光 + 十字星芒  #1557E8  正蓝色
+    // else if(gold) g.add(makeGlow('#CC89FE', 28, false));    // 金紫荧光：今天有新 idea  #b379a5  18 为光晕的大小 false/true  为是否有十字
+
+       if(isMe) {
+         // 我的节点：大蓝色光晕
+         g.add(makeGlow('#4A8FE4', 36, false));
+         // 可选：加一个内层光晕增强效果
+         g.add(makeGlow('#6DB3FF', 20, false));
+       } else if(gold) {
+         // 有新 idea 的节点：中紫色光晕
+         g.add(makeGlow('#B379A5', 26, false));
+         // 可选：加一个粉色内光晕
+         g.add(makeGlow('#D4A0C8', 14, false));
+       }
+       // 普通节点：无光晕
+       
+            
+       
     const lb=nameSprite(p.display_name, isMe);
     lb.position.set(0, rad+5.2, 0);
     g.add(lb);
