@@ -2865,8 +2865,14 @@ function socHead(title){
   return `<div class="calhead"><div class="mtitle" style="flex:1">${title}</div><button class="close" id="socClose">✕</button></div>`;
 }
 async function openSoc(view, payload){
+    if(socOpen){
+    closeSoc();
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
   const sh=$('socSheet');
   $('socOverlay').classList.add('show');
+  socOpen = true;  // ★ 标记已打开
   sh.innerHTML=socHead('加载中…');
   try{
     if(view==='found'){
@@ -2960,6 +2966,10 @@ async function openSoc(view, payload){
     sh.innerHTML=socHead('出错了')+`<div class="soctip">加载失败：${escHtml((e&&e.message)||'')}<br>可能是网络问题，或还没在 Supabase 执行社交版 SQL</div>`;
     const cl=sh.querySelector('#socClose'); if(cl) cl.onclick=closeSoc;
   }
+  function closeSoc(){ 
+  $('socOverlay').classList.remove('show');
+  socOpen = false;  // ★ 重置状态
+}
 }
 function fmtStamp(iso){
   if(!iso) return '';
@@ -3506,6 +3516,8 @@ function bindPlanetInput(cvs){
   const tmpV=new THREE.Vector3(), plane=new THREE.Plane();
   const ptrs=new Map();
   let sx=0, sy=0, moved=0, hitNode=null, pinchD=0;
+  let clickPending = false;  // ★ 防止重复点击
+  let clickTimeout = null;   // ★ 防抖定时器
   
   const toNDC=(x,y)=>{
     const r=cvs.getBoundingClientRect();
@@ -3516,11 +3528,9 @@ function bindPlanetInput(cvs){
   const pick=(x,y)=>{
     toNDC(x,y);
     ray.setFromCamera(v2, P.camera);
-    // ★ 只检测节点球体
     const meshes = P.nodes.map(g => g.userData.mesh).filter(m => m !== undefined);
     const hits=ray.intersectObjects(meshes);
     if(hits.length){
-      // ★ 找到对应的父级 Group
       const mesh = hits[0].object;
       const parent = P.nodes.find(g => g.userData.mesh === mesh);
       return parent || null;
@@ -3528,13 +3538,39 @@ function bindPlanetInput(cvs){
     return null;
   };
   
+  // ★ 处理点击节点的逻辑（防重复）
+  const handleNodeClick = (node) => {
+    if(clickPending) return;  // ★ 正在处理中，忽略
+    clickPending = true;
+    
+    const u = node.userData.mesh.userData;
+    if(u && u.uid){
+      // ★ 延迟打开，确保其他事件处理完毕
+      clearTimeout(clickTimeout);
+      clickTimeout = setTimeout(() => {
+        openSoc('person', {uid: u.uid, nm: u.nm});
+        // ★ 延迟重置状态，防止快速重复点击
+        setTimeout(() => {
+          clickPending = false;
+        }, 500);
+      }, 100);
+    } else {
+      clickPending = false;
+    }
+  };
+  
   // ★ 触摸/鼠标按下
   const onPointerDown = (e) => {
+    // ★ 阻止默认行为和冒泡
+    e.preventDefault();
+    e.stopPropagation();
+    
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     if(clientX === undefined) return;
     
-    ptrs.set(e.pointerId || 0, {x: clientX, y: clientY});
+    const id = e.pointerId || 0;
+    ptrs.set(id, {x: clientX, y: clientY});
     if(e.pointerId !== undefined) cvs.setPointerCapture(e.pointerId);
     
     if(ptrs.size === 2){
@@ -3552,6 +3588,9 @@ function bindPlanetInput(cvs){
   
   // ★ 触摸/鼠标移动
   const onPointerMove = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     if(clientX === undefined) return;
@@ -3594,50 +3633,26 @@ function bindPlanetInput(cvs){
   
   // ★ 触摸/鼠标抬起
   const onPointerUp = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     const id = e.pointerId || 0;
     ptrs.delete(id);
     if(ptrs.size < 2) P.pinch = false;
     if(ptrs.size > 0) return;
     
     // ★ 判断是否为点击（移动距离小于阈值）
-    if(moved < 15 && hitNode){
-      const u = hitNode.userData.mesh.userData;
-      if(u && u.uid){
-        // ★ 延迟打开，避免与拖动冲突
-        setTimeout(() => {
-          openSoc('person', {uid: u.uid, nm: u.nm});
-        }, 50);
-      }
+    if(moved < 20 && hitNode){
+      handleNodeClick(hitNode);
     }
     P.dragGrp=null; P.rotating=false; hitNode=null;
   };
   
-  // ★ 注册事件（同时支持鼠标和触摸）
+  // ★ 注册事件（只使用 pointer 事件，不再额外绑定 touch 事件避免重复）
   cvs.addEventListener('pointerdown', onPointerDown);
   cvs.addEventListener('pointermove', onPointerMove);
   cvs.addEventListener('pointerup', onPointerUp);
   cvs.addEventListener('pointercancel', onPointerUp);
-  
-  // ★ 触摸设备额外支持（防止某些浏览器 pointer 事件不触发）
-  cvs.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const ev = { clientX: touch.clientX, clientY: touch.clientY, pointerId: 0, touches: e.touches };
-    onPointerDown(ev);
-  }, { passive: false });
-  
-  cvs.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const ev = { clientX: touch.clientX, clientY: touch.clientY, pointerId: 0, touches: e.touches };
-    onPointerMove(ev);
-  }, { passive: false });
-  
-  cvs.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    const ev = { pointerId: 0 };
-    onPointerUp(ev);
-  }, { passive: false });
   
   // ★ 鼠标滚轮缩放
   cvs.addEventListener('wheel', (e) => {
@@ -3646,6 +3661,15 @@ function bindPlanetInput(cvs){
   }, { passive: false });
   
   cvs.addEventListener('contextmenu', e => e.preventDefault());
+  
+  // ★ ★ 关键修复：阻止触摸事件冒泡到 overlay，防止面板关闭 ★ ★
+  cvs.addEventListener('touchstart', (e) => {
+    e.stopPropagation();  // ★ 阻止冒泡到 overlay
+  }, { passive: true });
+  
+  cvs.addEventListener('touchend', (e) => {
+    e.stopPropagation();  // ★ 阻止冒泡到 overlay
+  }, { passive: true });
 }
      
 
