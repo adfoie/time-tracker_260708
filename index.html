@@ -397,6 +397,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     <button class="plbtn" id="plRelIn">关注我的</button>
     <button class="plbtn" id="plRelOut">我关注的</button>
     <button class="plbtn on" id="plRelAll">所有关系</button>
+    <div style="flex-basis:100%;height:0"></div>
+    <button class="plbtn" id="plLocateMe" style="margin-left:auto">📍 我</button>
   </div>
   <canvas id="plCanvas"></canvas>
   <div class="plhint" id="plHint"></div>
@@ -3084,6 +3086,7 @@ async function openPlanet(){
   loadThree(()=>buildPlanet());
 }
 function closePlanet(){
+  savePlanetView();
   P.on=false;
   cancelAnimationFrame(P.raf);
   $('planetOverlay').style.display='none';
@@ -3123,6 +3126,25 @@ function hexToRgba(hex,a){
   const n=parseInt(hex.slice(1),16);
   return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
 }
+
+     
+function planetViewKey(){
+  return 'tt_planet_view_' + (me && me.id ? me.id : 'anon');
+}
+function savePlanetView(){
+  if(!P.camera) return;
+  try{
+    localStorage.setItem(planetViewKey(), JSON.stringify({
+      x:P.camera.position.x, y:P.camera.position.y, z:P.camera.position.z,
+      rx:P.group?P.group.rotation.x:0, ry:P.group?P.group.rotation.y:0
+    }));
+  }catch(e){}
+}
+function loadPlanetView(){
+  try{ return JSON.parse(localStorage.getItem(planetViewKey())||'null'); }
+  catch(e){ return null; }
+}
+     
 /* 荧光光晕贴图：径向渐变 + 十字星芒（参考真实星光） */
 function makeGlow(hex, size, spikes){
   const cv=document.createElement('canvas'); cv.width=cv.height=128;
@@ -3210,6 +3232,11 @@ P.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
   if(P.group) P.scene.remove(P.group);
   P.group=new THREE.Group();
   P.nodes=[]; P.lines=[];
+  const savedView=loadPlanetView();
+  if(savedView){
+    P.camera.position.set(savedView.x, savedView.y, savedView.z);
+    P.group.rotation.set(savedView.rx||0, savedView.ry||0, 0);
+  }
   const byId={};
   profs.forEach(p=>{
     const isMe = p.id===me.id;
@@ -3504,7 +3531,7 @@ function bindPlanetInput(cvs){
   const ray=new THREE.Raycaster(), v2=new THREE.Vector2();
   const tmpV=new THREE.Vector3(), plane=new THREE.Plane();
   const ptrs=new Map();
-  let sx=0, sy=0, moved=0, hitNode=null, pinchD=0;
+  let sx=0, sy=0, moved=0, hitNode=null, pinchD=0, panLast=null;
   const toNDC=(x,y)=>{
     const r=cvs.getBoundingClientRect();
     v2.x=((x-r.left)/r.width)*2-1;
@@ -3519,9 +3546,10 @@ function bindPlanetInput(cvs){
   cvs.addEventListener('pointerdown',e=>{
     ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
     cvs.setPointerCapture(e.pointerId);
-    if(ptrs.size===2){                             // 双指缩放开始
+  if(ptrs.size===2){                             // 双指缩放/平移开始
       const [a,b]=[...ptrs.values()];
       pinchD=Math.hypot(a.x-b.x,a.y-b.y);
+      panLast={x:(a.x+b.x)/2, y:(a.y+b.y)/2};
       P.pinch=true; P.rotating=false; P.dragGrp=null;
       return;
     }
@@ -3533,13 +3561,21 @@ function bindPlanetInput(cvs){
   cvs.addEventListener('pointermove',e=>{
     if(!ptrs.has(e.pointerId)) return;
     ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(P.pinch && ptrs.size===2){                  // 双指缩放
+    if(P.pinch && ptrs.size===2){                  // 双指缩放 + 平移
       const [a,b]=[...ptrs.values()];
       const d=Math.hypot(a.x-b.x,a.y-b.y);
       if(pinchD>0){
         P.camera.position.z=Math.max(55, Math.min(400, P.camera.position.z*pinchD/d));
       }
       pinchD=d;
+      const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;         // 双指整体移动 → 平移视角，不再锁死在"我"的位置
+      if(panLast){
+        const dx=cx-panLast.x, dy=cy-panLast.y;
+        const panScale=P.camera.position.z*0.0016;  // 离得越远，平移越快，手感一致
+        P.camera.position.x -= dx*panScale;
+        P.camera.position.y += dy*panScale;
+      }
+      panLast={x:cx,y:cy};
       return;
     }
     const dx=e.clientX-sx, dy=e.clientY-sy;
@@ -3562,9 +3598,9 @@ function bindPlanetInput(cvs){
       sx=e.clientX; sy=e.clientY;
     }
   });
-     const up=e=>{
+    const up=e=>{
        ptrs.delete(e.pointerId);
-       if(ptrs.size<2) P.pinch=false;
+       if(ptrs.size<2){ P.pinch=false; panLast=null; }
        if(ptrs.size>0) return;
        if(moved<8 && hitNode){                        // 轻点节点：看公开 idea（含自己）
          const u=hitNode.userData.mesh.userData;
@@ -3777,7 +3813,9 @@ setInterval(()=>{ if(runningRec() && !editMode) renderAll(); }, 30000);
 setInterval(checkReminders, 20000);
 checkReminders();
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ renderAll(); checkReminders(); if(me) pullRemote(); } });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && P.on) savePlanetView(); });
 
+     
 /* ═══════════ 滑动手势 ═══════════ */
 let swX=0, swY=0, swOK=false;
 document.addEventListener('touchstart', e=>{
@@ -3826,6 +3864,10 @@ $('plIdeaTg').onclick=()=>{
 $('plRelIn').onclick=()=>{ P.rel='in'; applyRel(); };
 $('plRelOut').onclick=()=>{ P.rel='out'; applyRel(); };
 $('plRelAll').onclick=()=>{ P.rel='all'; applyRel(); };
+$('plLocateMe').onclick=()=>{
+  P.camera.position.set(0,8,168);
+  if(P.group) P.group.rotation.set(0,0,0);
+};
 initSb();
 renderAll();
 </script>
