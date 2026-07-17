@@ -3099,7 +3099,7 @@ async function fetchPlanetData(){
   try{
     const d0=new Date(); d0.setHours(0,0,0,0);
     const {data:ri}=await sb.from('public_ideas').select('user_id').gte('created_at', d0.toISOString());
-    (ri||[]).forEach(r=>{ if(iFollow.has(r.user_id)) golden[r.user_id]=true; });
+    (ri||[]).forEach(r=>{ golden[r.user_id]=true; });   // 不再限制"仅我关注的人"，所有当天发过 idea 的人都算
   }catch(e){}
   const folCnt={};
   fols.forEach(f=>{ folCnt[f.followee]=(folCnt[f.followee]||0)+1; });
@@ -3111,6 +3111,13 @@ function hashPos(id){
   const th = ((h>>>8)%1000)/1000*Math.PI*2;
   const ph = Math.acos(2*(((h>>>16)%1000)/1000)-1);
   return [ r*Math.sin(ph)*Math.cos(th), r*Math.cos(ph)*0.55, r*Math.sin(ph)*Math.sin(th) ];
+}
+const FOLLOWER_TIERS=[1,5,10,20,40,80];
+function radiusForFollowers(fc){
+  const base=3.0, step=0.68, maxRad=7.2;
+  let tier=0;
+  FOLLOWER_TIERS.forEach(t=>{ if(fc>=t) tier++; });
+  return Math.min(base + tier*step, maxRad);
 }
 function hexToRgba(hex,a){
   const n=parseInt(hex.slice(1),16);
@@ -3207,12 +3214,13 @@ P.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
   profs.forEach(p=>{
     const isMe = p.id===me.id;
     const gold = P.showIdea && golden[p.id] && !isMe;
+    const newUser = !isMe && !gold && isToday(p.created_at);   // 今天新注册；若同时今天也发了idea，idea高亮优先
     const g=new THREE.Group();
     const savedPos = S.planetPos && S.planetPos[p.id];
     g.position.set(...(savedPos ? savedPos : (isMe ? [0,0,0] : hashPos(p.id))));
     /* 节点大小随粉丝数：√粉丝数 递增，上限约 3 倍面积 */
     const fc=folCnt[p.id]||0;
-    const rad = isMe ? 3.1 : Math.min(3.2 + Math.sqrt(fc)*1.15, 7.2);
+    const rad = isMe ? 3.1 : radiusForFollowers(fc);
     // const mat = isMe
     //   ? new THREE.MeshStandardMaterial({color:0x5FA8FF, emissive:0x5FA8FF, emissiveIntensity:1.4}) // 情况 A：当前登录用户自己的节点
     //   : gold
@@ -3221,12 +3229,12 @@ P.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
 
 
 const mat = isMe
-  // 我的节点：亮白蓝，电光感
-  ? new THREE.MeshStandardMaterial({
-      color: 0x8FD8FF,
-      emissive: 0x4FC3FF,
-      emissiveIntensity: 1.6
-    })
+     ? new THREE.MeshStandardMaterial({ color: 0x4A8FE4, emissive: 0x4A8FE4, emissiveIntensity: 1.3 })
+     : gold
+     ? new THREE.MeshStandardMaterial({ color: 0x9B59B6, emissive: 0x9B59B6, emissiveIntensity: 1 })
+     : newUser
+     ? new THREE.MeshStandardMaterial({ color: 0x2ED9B0, emissive: 0x2ED9B0, emissiveIntensity: 1 })
+     : new THREE.MeshStandardMaterial({ color: 0x8A93A6, emissive: 0x8A93A6, emissiveIntensity: 0.35 });
   : gold
   // 有新 idea 的节点：暖橙色点缀（对应参考图里的橙色亮点）
   ? new THREE.MeshStandardMaterial({
@@ -3254,6 +3262,9 @@ if(isMe) {
 } else if(gold) {
   g.add(makeGlow('#FFB35C', 30, false));   // 橙色点也带星芒，呼应参考图的亮点
   g.add(makeGlow('#FF9D3D', 16, false));
+} else if(newUser) {
+  g.add(makeGlow('#2ED9B0', 26, false));      // 新注册：蓝绿色光晕
+  g.add(makeGlow('#7FF0D6', 14, false));
 } else {
   g.add(makeGlow('#3DA9FC', 24, false));  // 普通节点也发蓝光，不再灰暗
 }
