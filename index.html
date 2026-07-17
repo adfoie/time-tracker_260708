@@ -2980,10 +2980,6 @@ async function openSoc(view, payload){
           </div>
         </div>`).join(''):'<div class="soctip">还没有新消息</div>');
     }
-
-
-
-         
     else if(view==='comments'){
       const it=payload;
       const [{data:cs}, {data:cl}, {data:cf}] = await Promise.all([
@@ -3056,9 +3052,12 @@ async function openSoc(view, payload){
       b.onclick=()=>toggleFollow(b.dataset.fo, b));
   }catch(e){
     sh.innerHTML=socHead('出错了')+`<div class="soctip">加载失败：${escHtml((e&&e.message)||'')}<br>可能是网络问题，或还没在 Supabase 执行社交版 SQL</div>`;
-    const cl=sh.querySelector('#socClose'); if(cl) cl.onclick=closeSoc;
+    // const cl=sh.querySelector('#socClose'); 
+    //    if(cl) cl.onclick=closeSoc;
   }
 }
+
+
 function fmtStamp(iso){
   if(!iso) return '';
   const d=new Date(iso);
