@@ -2938,7 +2938,6 @@ async function openSoc(view, payload){
         <div class="ideatxt">💬 ${escHtml(c.content)}</div>
         <div class="ideameta">评论于：${escHtml((ideaMap[c.idea_id]||'（原 idea 已删除）').slice(0,40))}</div></div>`).join(''):'<div class="soctip">还没有发过评论</div>');
     }
-
     else if(view==='msgs'){
       const {data:myIdeas} = await sb.from('public_ideas').select('id,content').eq('user_id', me.id);
       const ideaIds=(myIdeas||[]).map(i=>i.id);
@@ -3052,8 +3051,10 @@ async function openSoc(view, payload){
       b.onclick=()=>toggleFollow(b.dataset.fo, b));
   }catch(e){
     sh.innerHTML=socHead('出错了')+`<div class="soctip">加载失败：${escHtml((e&&e.message)||'')}<br>可能是网络问题，或还没在 Supabase 执行社交版 SQL</div>`;
-    // const cl=sh.querySelector('#socClose'); 
-    //    if(cl) cl.onclick=closeSoc;
+    const cl=sh.querySelector('#socClose');
+    if(cl) cl.onclick=closeSoc;
+    const bb=sh.querySelector('#socBack');
+    if(bb) bb.onclick=()=>{ const r=socReturn; socReturn=null; openSoc(r.view, r.payload); };
   }
 }
 
