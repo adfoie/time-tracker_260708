@@ -438,6 +438,7 @@ function ensureDefaults(s){
   if(!s.todos) s.todos={};
   if(!s.weekDiary) s.weekDiary={};
   if(!s.mode) s.mode='all';
+  if(!s.planetPos) s.planetPos={};
   ['rest','wake','gn'].forEach(id=>{
     if(!s.cats.find(c=>c.id===id)) s.cats.push(JSON.parse(JSON.stringify(DEFAULT_CATS.find(c=>c.id===id))));
   });
@@ -3070,6 +3071,7 @@ async function openPlanet(){
   $('planetOverlay').style.display='block';
   $('plHint').textContent='正在加载星球数据…';
   P.on=true;
+  await pullRemote();          // 先同步一次，拿到其他设备最新的节点位置
   loadThree(()=>buildPlanet());
 }
 function closePlanet(){
@@ -3197,7 +3199,8 @@ P.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
     const isMe = p.id===me.id;
     const gold = P.showIdea && golden[p.id] && !isMe;
     const g=new THREE.Group();
-    g.position.set(...(isMe ? [0,0,0] : hashPos(p.id)));
+    const savedPos = S.planetPos && S.planetPos[p.id];
+    g.position.set(...(savedPos ? savedPos : (isMe ? [0,0,0] : hashPos(p.id))));
     /* 节点大小随粉丝数：√粉丝数 递增，上限约 3 倍面积 */
     const fc=folCnt[p.id]||0;
     const rad = isMe ? 3.1 : Math.min(3.2 + Math.sqrt(fc)*1.15, 7.2);
@@ -3528,16 +3531,21 @@ function bindPlanetInput(cvs){
       sx=e.clientX; sy=e.clientY;
     }
   });
-  const up=e=>{
-    ptrs.delete(e.pointerId);
-    if(ptrs.size<2) P.pinch=false;
-    if(ptrs.size>0) return;
-    if(moved<8 && hitNode){                        // 轻点节点：看公开 idea（含自己）
-      const u=hitNode.userData.mesh.userData;
-      openSoc('person',{uid:u.uid, nm:u.nm});
-    }
-    P.dragGrp=null; P.rotating=false; hitNode=null;
-  };
+     const up=e=>{
+       ptrs.delete(e.pointerId);
+       if(ptrs.size<2) P.pinch=false;
+       if(ptrs.size>0) return;
+       if(moved<8 && hitNode){                        // 轻点节点：看公开 idea（含自己）
+         const u=hitNode.userData.mesh.userData;
+         openSoc('person',{uid:u.uid, nm:u.nm});
+       } else if(moved>=8 && hitNode){                 // 拖动结束：记住新位置，走云同步
+         const u=hitNode.userData.mesh.userData;
+         if(!S.planetPos) S.planetPos={};
+         S.planetPos[u.uid]=[hitNode.position.x, hitNode.position.y, hitNode.position.z];
+         save();                                       // 本地写入 + 自动排队推送到 Supabase
+       }
+       P.dragGrp=null; P.rotating=false; hitNode=null;
+     };
   cvs.addEventListener('pointerup',up);
   cvs.addEventListener('pointercancel',up);
   cvs.addEventListener('wheel',e=>{                // 电脑滚轮缩放
