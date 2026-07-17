@@ -319,6 +319,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .soctip{text-align:center;color:var(--ink-2);font-size:13px;padding:28px 20px}
   .ideacard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
   .ideacard .ideameta{font-size:11px;color:var(--ink-2);font-family:var(--mono);margin-bottom:4px}
+  .ideacard .ideameta.today{font-weight:700;color:var(--ink)}
+  .ideacard .ideameta .idea-badge{margin-right:2px}
   .ideacard .ideatxt{font-size:13px;white-space:pre-wrap;word-break:break-all}
   .ideacard .ideaops{display:flex;gap:6px;margin-top:8px}
   .ideacard .ideaops .minibtn{margin-left:0}
@@ -2967,6 +2969,12 @@ function fmtStamp(iso){
   const d=new Date(iso);
   return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function isToday(iso){
+  if(!iso) return false;
+  const d=new Date(iso);
+  const n=new Date();
+  return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
+}
 async function ideaCards(ideas, nm, showAuthor){
   if(!ideas.length) return '<div class="soctip">'+(nm?escHtml(nm)+' 还没有公开的 idea':'空空如也')+'</div>';
   const ids=ideas.map(i=>i.id);
@@ -2986,8 +2994,9 @@ async function ideaCards(ideas, nm, showAuthor){
     const favs=(fv.data||[]).filter(r=>r.idea_id===it.id);
     const cms=(cm.data||[]).filter(r=>r.idea_id===it.id);
     const myLk=likes.some(r=>r.user_id===me.id), myFv=favs.some(r=>r.user_id===me.id);
+    const today = isToday(it.happened_at);
     return `<div class="ideacard">
-      <div class="ideameta">${showAuthor?('🪐 '+escHtml(authors[it.user_id]||'?')+' · '):''}${fmtStamp(it.happened_at)}</div>
+      <div class="ideameta${today?' today':''}">${showAuthor?('🪐 '+escHtml(authors[it.user_id]||'?')+' · '):''}${today?'<span class="idea-badge">💡</span>':''}${fmtStamp(it.happened_at)}</div>
       <div class="ideatxt">${escHtml(it.content)}</div>
       <div class="ideaops">
         <button class="minibtn ${myLk?'on':''}" data-like="${it.id}">👍 ${likes.length}</button>
