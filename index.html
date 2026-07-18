@@ -323,6 +323,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .ideacard .ideameta .idea-badge{margin-right:2px}
   .ideacard .ideatxt{font-size:13px;white-space:pre-wrap;word-break:break-all}
   .ideacard .ideaops{display:flex;gap:6px;margin-top:8px}
+  .cmtnode{border-left:2px solid var(--line);padding-left:2px}
   .ideacard .ideaops .minibtn{margin-left:0}
 </style>
 </head>
@@ -2704,6 +2705,7 @@ function renderMe(){
         <button id="btnMyLikes">我的点赞</button>
         <button id="btnMyFavs">我的收藏</button>
         <button id="btnMyCmts">我的评论</button>
+        <button id="btnMyMsgs">我的消息</button>
       </div>
     </div>`;
   }
@@ -2744,6 +2746,7 @@ function renderMe(){
     $('btnMyLikes').onclick=()=>openSoc('likes');
     $('btnMyFavs').onclick=()=>openSoc('favs');
     $('btnMyCmts').onclick=()=>openSoc('cmts');
+    $('btnMyMsgs').onclick=()=>openSoc('msgs');
     refreshFollowCounts();
   }
   $('btnExport').onclick=exportJSON;
@@ -2866,8 +2869,9 @@ async function toggleFollow(uid, btn){
 /* —— 社交面板 —— */
 function closeSoc(){ $('socOverlay').classList.remove('show'); }
 $('socOverlay').addEventListener('click',e=>{ if(e.target===$('socOverlay')) closeSoc(); });
-function socHead(title){
-  return `<div class="calhead"><div class="mtitle" style="flex:1">${title}</div><button class="close" id="socClose">✕</button></div>`;
+let socReturn=null;
+function socHead(title, showBack){
+  return `<div class="calhead">${showBack?'<button class="close" id="socBack">＜</button>':''}<div class="mtitle" style="flex:1">${title}</div><button class="close" id="socClose">✕</button></div>`;
 }
 async function openSoc(view, payload){
   const sh=$('socSheet');
@@ -2902,7 +2906,7 @@ async function openSoc(view, payload){
       const {data:ideas,error:e1}=await sb.from('public_ideas').select('*').eq('user_id',uid).order('happened_at',{ascending:false}).limit(20);
       if(e1) throw e1;
       sh.innerHTML=socHead('🪐 '+escHtml(nm)+' 的公开 idea')+await ideaCards(ideas||[], nm, false);
-      bindIdeaCards(sh);
+      bindIdeaCards(sh, {view:'person', payload:{uid,nm}});
     }
     else if(view==='mypub'){
       const {data:ideas,error:e2}=await sb.from('public_ideas').select('*').eq('user_id',me.id).order('happened_at',{ascending:false}).limit(50);
@@ -2924,7 +2928,7 @@ async function openSoc(view, payload){
       let ideas=[];
       if(ids.length){ const {data}=await sb.from('public_ideas').select('*').in('id',ids); ideas=data||[]; }
       sh.innerHTML=socHead(view==='likes'?'我点赞的':'我收藏的')+await ideaCards(ideas,null,true);
-      bindIdeaCards(sh);
+      bindIdeaCards(sh, {view, payload:null});
     }
     else if(view==='cmts'){
       const {data:rows}=await sb.from('idea_comments').select('*').eq('user_id',me.id).order('created_at',{ascending:false}).limit(50);
@@ -2938,15 +2942,37 @@ async function openSoc(view, payload){
     }
     else if(view==='comments'){
       const it=payload;
-      const {data:cs}=await sb.from('idea_comments').select('*').eq('idea_id',it.id).order('created_at',{ascending:true}).limit(100);
-      const uids=[...new Set((cs||[]).map(c=>c.user_id))];
+      const [{data:cs}, {data:cl}, {data:cf}] = await Promise.all([
+        sb.from('idea_comments').select('*').eq('idea_id',it.id).order('created_at',{ascending:true}).limit(300),
+        sb.from('comment_likes').select('comment_id,user_id'),
+        sb.from('comment_favs').select('comment_id,user_id'),
+      ]);
+      const list=cs||[];
+      const uids=[...new Set(list.map(c=>c.user_id))];
       let names={};
       if(uids.length){ const {data}=await sb.from('profiles').select('id,display_name').in('id',uids); (data||[]).forEach(p=>names[p.id]=p.display_name); }
-      sh.innerHTML=socHead('评论')+`
+      const likeCnt={}, favCnt={}, myLike={}, myFav={};
+      const cids=new Set(list.map(c=>c.id));
+      (cl||[]).forEach(r=>{ if(!cids.has(r.comment_id)) return; likeCnt[r.comment_id]=(likeCnt[r.comment_id]||0)+1; if(r.user_id===me.id) myLike[r.comment_id]=true; });
+      (cf||[]).forEach(r=>{ if(!cids.has(r.comment_id)) return; favCnt[r.comment_id]=(favCnt[r.comment_id]||0)+1; if(r.user_id===me.id) myFav[r.comment_id]=true; });
+      const map={}; list.forEach(c=>{ c.children=[]; map[c.id]=c; });
+      const roots=[];
+      list.forEach(c=>{ (c.parent_id && map[c.parent_id]) ? map[c.parent_id].children.push(c) : roots.push(c); });
+      const renderNode=(c, depth)=>`
+        <div class="soccard cmtnode" style="margin-left:${Math.min(depth,5)*14}px;align-items:flex-start">
+          <div style="flex:1">
+            <div class="socname" style="font-size:12px">${escHtml(names[c.user_id]||'?')}</div>
+            <div style="font-size:13px;word-break:break-all;margin:2px 0 6px">${escHtml(c.content)}</div>
+            <div class="ideaops">
+              <button class="minibtn ${myLike[c.id]?'on':''}" data-clike="${c.id}">👍 ${likeCnt[c.id]||0}</button>
+              <button class="minibtn ${myFav[c.id]?'on':''}" data-cfav="${c.id}">⭐ ${favCnt[c.id]||0}</button>
+              <button class="minibtn" data-creply="${c.id}">💬 回复</button>
+            </div>
+          </div>
+        </div>${(c.children||[]).map(ch=>renderNode(ch, depth+1)).join('')}`;
+      sh.innerHTML=socHead('评论', !!socReturn)+`
         <div class="ideacard"><div class="ideatxt">${escHtml(it.content)}</div></div>`
-        +((cs||[]).length?(cs||[]).map(c=>`
-        <div class="soccard" style="align-items:flex-start"><span class="socname" style="flex:0 0 auto">${escHtml(names[c.user_id]||'?')}：</span>
-        <span style="flex:1;font-size:13px;word-break:break-all">${escHtml(c.content)}</span></div>`).join(''):'<div class="soctip">还没有评论</div>')
+        +(roots.length?roots.map(c=>renderNode(c,0)).join(''):'<div class="soctip">还没有评论</div>')
         +`<div class="btns" style="margin-top:12px;display:flex"><button class="minibtn" id="btnAddCmt" style="flex:1;padding:10px;margin:0">写评论</button></div>`;
       $('btnAddCmt').onclick=async ()=>{
         const v=await uiPrompt('写评论','');
@@ -2954,9 +2980,63 @@ async function openSoc(view, payload){
         await sb.from('idea_comments').insert({idea_id:it.id, user_id:me.id, content:v.trim().slice(0,200)});
         toast('已评论'); openSoc('comments', it);
       };
+      sh.querySelectorAll('[data-creply]').forEach(b=>b.onclick=async ()=>{
+        const v=await uiPrompt('回复这条评论','');
+        if(!v||!v.trim()) return;
+        await sb.from('idea_comments').insert({idea_id:it.id, user_id:me.id, content:v.trim().slice(0,200), parent_id:b.dataset.creply});
+        toast('已回复'); openSoc('comments', it);
+      });
+      sh.querySelectorAll('[data-clike],[data-cfav]').forEach(b=>b.onclick=async ()=>{
+        const isLike=('clike' in b.dataset);
+        const tbl=isLike?'comment_likes':'comment_favs';
+        const id=isLike?b.dataset.clike:b.dataset.cfav;
+        try{
+          const {data}=await sb.from(tbl).select('comment_id').eq('user_id',me.id).eq('comment_id',id).maybeSingle();
+          if(data) await sb.from(tbl).delete().eq('user_id',me.id).eq('comment_id',id);
+          else await sb.from(tbl).insert({user_id:me.id, comment_id:id});
+          openSoc('comments', it);
+        }catch(e){ toast('操作失败'); }
+      });
+    }
+    else if(view==='msgs'){
+      const {data:myIdeas} = await sb.from('public_ideas').select('id,content').eq('user_id', me.id);
+      const ideaIds=(myIdeas||[]).map(i=>i.id);
+      const ideaMap={}; (myIdeas||[]).forEach(i=>ideaMap[i.id]=i.content);
+      const {data:myCmts} = await sb.from('idea_comments').select('id,content').eq('user_id', me.id);
+      const cmtIds=(myCmts||[]).map(c=>c.id);
+      const cmtMap={}; (myCmts||[]).forEach(c=>cmtMap[c.id]=c.content);
+      const [il,ifv,cl,cfv,fo] = await Promise.all([
+        ideaIds.length ? sb.from('idea_likes').select('user_id,idea_id,created_at').in('idea_id',ideaIds) : Promise.resolve({data:[]}),
+        ideaIds.length ? sb.from('idea_favs').select('user_id,idea_id,created_at').in('idea_id',ideaIds) : Promise.resolve({data:[]}),
+        cmtIds.length ? sb.from('comment_likes').select('user_id,comment_id,created_at').in('comment_id',cmtIds) : Promise.resolve({data:[]}),
+        cmtIds.length ? sb.from('comment_favs').select('user_id,comment_id,created_at').in('comment_id',cmtIds) : Promise.resolve({data:[]}),
+        sb.from('follows').select('follower,created_at').eq('followee', me.id),
+      ]);
+      let items=[];
+      (il.data||[]).forEach(r=>{ if(r.user_id!==me.id) items.push({type:'ideaLike', uid:r.user_id, t:r.created_at, ref:ideaMap[r.idea_id]}); });
+      (ifv.data||[]).forEach(r=>{ if(r.user_id!==me.id) items.push({type:'ideaFav', uid:r.user_id, t:r.created_at, ref:ideaMap[r.idea_id]}); });
+      (cl.data||[]).forEach(r=>{ if(r.user_id!==me.id) items.push({type:'cmtLike', uid:r.user_id, t:r.created_at, ref:cmtMap[r.comment_id]}); });
+      (cfv.data||[]).forEach(r=>{ if(r.user_id!==me.id) items.push({type:'cmtFav', uid:r.user_id, t:r.created_at, ref:cmtMap[r.comment_id]}); });
+      (fo.data||[]).forEach(r=>{ if(r.follower!==me.id) items.push({type:'follow', uid:r.follower, t:r.created_at}); });
+      items.sort((a,b)=>new Date(b.t)-new Date(a.t));
+      items=items.slice(0,80);
+      const uids=[...new Set(items.map(i=>i.uid))];
+      let names={};
+      if(uids.length){ const {data}=await sb.from('profiles').select('id,display_name').in('id',uids); (data||[]).forEach(p=>names[p.id]=p.display_name); }
+      const label={ideaLike:'👍 点赞了你的 idea', ideaFav:'⭐ 收藏了你的 idea', cmtLike:'👍 点赞了你的评论', cmtFav:'⭐ 收藏了你的评论', follow:'➕ 关注了你'};
+      sh.innerHTML=socHead('我的消息')+(items.length?items.map(it=>`
+        <div class="soccard" style="align-items:flex-start">
+          <div style="flex:1">
+            <div class="socname">${escHtml(names[it.uid]||'?')} ${label[it.type]}</div>
+            ${it.ref?`<div class="ideameta" style="margin-top:2px">${escHtml((it.ref||'').slice(0,40))}</div>`:''}
+            <div class="ideameta">${fmtStamp(it.t)}</div>
+          </div>
+        </div>`).join(''):'<div class="soctip">还没有新消息</div>');
     }
     const cl=sh.querySelector('#socClose');
     if(cl) cl.onclick=closeSoc;
+    const bb=sh.querySelector('#socBack');
+    if(bb) bb.onclick=()=>{ const r=socReturn; socReturn=null; openSoc(r.view, r.payload); };
     sh.querySelectorAll('[data-see]').forEach(b=>
       b.onclick=()=>openSoc('person',{uid:b.dataset.see, nm:b.dataset.nm}));
     sh.querySelectorAll('[data-fo]').forEach(b=>
@@ -3007,7 +3087,7 @@ async function ideaCards(ideas, nm, showAuthor){
       </div></div>`;
   }).join('');
 }
-function bindIdeaCards(sh){
+function bindIdeaCards(sh, backCtx){
   sh.querySelectorAll('[data-like],[data-fav]').forEach(b=>b.onclick=async ()=>{
     const isLike=('like' in b.dataset);
     const tbl=isLike?'idea_likes':'idea_favs';
@@ -3022,7 +3102,7 @@ function bindIdeaCards(sh){
   });
   sh.querySelectorAll('[data-cmt]').forEach(b=>b.onclick=async ()=>{
     const {data}=await sb.from('public_ideas').select('*').eq('id',b.dataset.cmt).maybeSingle();
-    if(data) openSoc('comments', data);
+    if(data){ socReturn=backCtx||null; openSoc('comments', data); }
   });
 }
 /* —— 分类导出 —— */
