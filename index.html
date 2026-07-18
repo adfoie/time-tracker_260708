@@ -324,6 +324,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .ideacard .ideatxt{font-size:13px;white-space:pre-wrap;word-break:break-all}
   .ideacard .ideaops{display:flex;gap:6px;margin-top:8px}
   .cmtnode{border-left:2px solid var(--line);padding-left:2px}
+  .skel{height:52px;background:linear-gradient(90deg,var(--card) 0%,var(--line) 50%,var(--card) 100%);background-size:200% 100%;animation:skel 1.2s ease-in-out infinite;border-radius:12px;margin-bottom:8px;border:1px solid var(--line)}
+  @keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
   .ideacard .ideaops .minibtn{margin-left:0}
 </style>
 </head>
@@ -2870,13 +2872,30 @@ async function toggleFollow(uid, btn){
 function closeSoc(){ $('socOverlay').classList.remove('show'); }
 $('socOverlay').addEventListener('click',e=>{ if(e.target===$('socOverlay')) closeSoc(); });
 let socReturn=null;
+const _profCache=new Map();   // id → {name, t}
+const PROF_TTL=30000;
+async function getNames(ids){
+  const now=Date.now(), out={}, miss=[];
+  ids.forEach(id=>{
+    const c=_profCache.get(id);
+    if(c && (now-c.t)<PROF_TTL) out[id]=c.name;
+    else miss.push(id);
+  });
+  if(miss.length){
+    const {data}=await sb.from('profiles').select('id,display_name').in('id',miss);
+    (data||[]).forEach(p=>{ _profCache.set(p.id,{name:p.display_name, t:now}); out[p.id]=p.display_name; });
+  }
+  return out;
+}
 function socHead(title, showBack){
   return `<div class="calhead">${showBack?'<button class="close" id="socBack">＜</button>':''}<div class="mtitle" style="flex:1">${title}</div><button class="close" id="socClose">✕</button></div>`;
 }
 async function openSoc(view, payload){
   const sh=$('socSheet');
   $('socOverlay').classList.add('show');
-  sh.innerHTML=socHead('加载中…');
+  const skTitles={found:'搜索结果',follows:'我关注的人',person:payload&&payload.nm?('🪐 '+payload.nm+' 的公开 idea'):'加载中…',mypub:'我的公开 idea',likes:'我点赞的',favs:'我收藏的',cmts:'我的评论',comments:'评论',msgs:'我的消息'};
+  sh.innerHTML=socHead(skTitles[view]||'加载中…', view==='comments' && !!socReturn)+
+    `<div class="soccard skel"></div><div class="soccard skel"></div><div class="soccard skel"></div>`;
   try{
     if(view==='found'){
       const rows=payload||[];
@@ -2950,7 +2969,7 @@ async function openSoc(view, payload){
       const list=cs||[];
       const uids=[...new Set(list.map(c=>c.user_id))];
       let names={};
-      if(uids.length){ const {data}=await sb.from('profiles').select('id,display_name').in('id',uids); (data||[]).forEach(p=>names[p.id]=p.display_name); }
+      if(uids.length){ names=await getNames(uids); }
       const likeCnt={}, favCnt={}, myLike={}, myFav={};
       const cids=new Set(list.map(c=>c.id));
       (cl||[]).forEach(r=>{ if(!cids.has(r.comment_id)) return; likeCnt[r.comment_id]=(likeCnt[r.comment_id]||0)+1; if(r.user_id===me.id) myLike[r.comment_id]=true; });
@@ -3022,7 +3041,7 @@ async function openSoc(view, payload){
       items=items.slice(0,80);
       const uids=[...new Set(items.map(i=>i.uid))];
       let names={};
-      if(uids.length){ const {data}=await sb.from('profiles').select('id,display_name').in('id',uids); (data||[]).forEach(p=>names[p.id]=p.display_name); }
+      if(uids.length){ names=await getNames(uids); }
       const label={ideaLike:'👍 点赞了你的 idea', ideaFav:'⭐ 收藏了你的 idea', cmtLike:'👍 点赞了你的评论', cmtFav:'⭐ 收藏了你的评论', follow:'➕ 关注了你'};
       sh.innerHTML=socHead('我的消息')+(items.length?items.map(it=>`
         <div class="soccard" style="align-items:flex-start">
@@ -3068,8 +3087,7 @@ async function ideaCards(ideas, nm, showAuthor){
   let authors={};
   if(showAuthor){
     const uids=[...new Set(ideas.map(i=>i.user_id))];
-    const {data}=await sb.from('profiles').select('id,display_name').in('id',uids);
-    (data||[]).forEach(p=>authors[p.id]=p.display_name);
+    authors=await getNames(uids);
   }
   return ideas.map(it=>{
     const likes=(lk.data||[]).filter(r=>r.idea_id===it.id);
