@@ -2961,7 +2961,7 @@ async function openSoc(view, payload){
       const renderNode=(c, depth)=>`
         <div class="soccard cmtnode" style="margin-left:${Math.min(depth,5)*14}px;align-items:flex-start">
           <div style="flex:1">
-            <div class="socname" style="font-size:12px">${escHtml(names[c.user_id]||'?')}</div>
+            <div class="socname" style="font-size:12px">${escHtml(names[c.user_id]||'?')} <span class="ideameta" style="font-weight:normal;margin-left:4px">${fmtStamp(c.created_at)}</span></div>
             <div style="font-size:13px;word-break:break-all;margin:2px 0 6px">${escHtml(c.content)}</div>
             <div class="ideaops">
               <button class="minibtn ${myLike[c.id]?'on':''}" data-clike="${c.id}">👍 ${likeCnt[c.id]||0}</button>
