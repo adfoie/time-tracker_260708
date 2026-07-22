@@ -1220,11 +1220,11 @@ function renderRecs(){
     pubToggle.onmousedown = (ev)=>{
       ev.stopPropagation();
     };
-    pubToggle.onchange = ()=>{
-      // r.isPublic = pubToggle.checked;
-      r.pub = pubToggle.checked; //v12-将上述一行修改为该行
-      save();
-      // 刷新显示（更新 durStr 中的 🔒/🌍 图标）
+    pubToggle.onchange = async ()=>{
+      pubToggle.disabled = true;
+      await togglePubIdea(r);          // 真正推送/删除云端 public_ideas，内部会 save()
+      pubToggle.checked = !!r.pub;     // 以真实结果回填（失败时自动弹回原状）
+      pubToggle.disabled = false;
       renderRecs();
     };
   }
