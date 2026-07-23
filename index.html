@@ -324,6 +324,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .ideacard .ideatxt{font-size:13px;white-space:pre-wrap;word-break:break-all}
   .ideacard .ideaops{display:flex;gap:6px;margin-top:8px}
   .cmtnode{border-left:2px solid var(--line);padding-left:2px}
+  .msgdot{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;line-height:16px;padding:0 4px;border-radius:99px;background:#E24C4C;color:#fff;font-size:10px;font-weight:700;text-align:center;box-shadow:0 0 0 2px var(--bg)}
   .skel{height:52px;background:linear-gradient(90deg,var(--card) 0%,var(--line) 50%,var(--card) 100%);background-size:200% 100%;animation:skel 1.2s ease-in-out infinite;border-radius:12px;margin-bottom:8px;border:1px solid var(--line)}
   @keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
   .ideacard .ideaops .minibtn{margin-left:0}
@@ -445,6 +446,7 @@ function ensureDefaults(s){
   if(!s.todos) s.todos={};
   if(!s.weekDiary) s.weekDiary={};
   if(!s.mode) s.mode='all';
+  if(!s.msgSeenAt) s.msgSeenAt=0;
   if(!s.planetPos) s.planetPos={};
   ['rest','wake','gn'].forEach(id=>{
     if(!s.cats.find(c=>c.id===id)) s.cats.push(JSON.parse(JSON.stringify(DEFAULT_CATS.find(c=>c.id===id))));
@@ -2707,7 +2709,7 @@ function renderMe(){
         <button id="btnMyLikes">我的点赞</button>
         <button id="btnMyFavs">我的收藏</button>
         <button id="btnMyCmts">我的评论</button>
-        <button id="btnMyMsgs">我的消息</button>
+        <button id="btnMyMsgs" style="position:relative">我的消息<span id="msgDot" class="msgdot" style="display:none"></span></button>
       </div>
     </div>`;
   }
@@ -2749,6 +2751,12 @@ function renderMe(){
     $('btnMyFavs').onclick=()=>openSoc('favs');
     $('btnMyCmts').onclick=()=>openSoc('cmts');
     $('btnMyMsgs').onclick=()=>openSoc('msgs');
+    countUnreadMsgs().then(n=>{
+      const d=$('msgDot');
+      if(!d) return;
+      if(n>0){ d.textContent=n>99?'99+':n; d.style.display=''; }
+      else d.style.display='none';
+    });
     refreshFollowCounts();
   }
   $('btnExport').onclick=exportJSON;
@@ -2806,6 +2814,27 @@ function countPubIdeas(){
   let all=0,pub=0;
   Object.values(S.recs).forEach(rs=>rs.forEach(r=>{ if(r.idea){all++; if(r.pub)pub++;} }));
   return {all,pub};
+}
+async function countUnreadMsgs(){
+  if(!sb||!me) return 0;
+  const since=new Date(S.msgSeenAt||0).toISOString();
+  try{
+    const {data:myIdeas}=await sb.from('public_ideas').select('id').eq('user_id',me.id);
+    const ideaIds=(myIdeas||[]).map(i=>i.id);
+    const {data:myCmts}=await sb.from('idea_comments').select('id').eq('user_id',me.id);
+    const cmtIds=(myCmts||[]).map(c=>c.id);
+    const [il,ifv,cl,cfv,fo]=await Promise.all([
+      ideaIds.length?sb.from('idea_likes').select('user_id').in('idea_id',ideaIds).gt('created_at',since):Promise.resolve({data:[]}),
+      ideaIds.length?sb.from('idea_favs').select('user_id').in('idea_id',ideaIds).gt('created_at',since):Promise.resolve({data:[]}),
+      cmtIds.length?sb.from('comment_likes').select('user_id').in('comment_id',cmtIds).gt('created_at',since):Promise.resolve({data:[]}),
+      cmtIds.length?sb.from('comment_favs').select('user_id').in('comment_id',cmtIds).gt('created_at',since):Promise.resolve({data:[]}),
+      sb.from('follows').select('follower').eq('followee',me.id).gt('created_at',since),
+    ]);
+    let n=0;
+    [il,ifv,cl,cfv].forEach(res=>(res.data||[]).forEach(r=>{ if(r.user_id!==me.id) n++; }));
+    (fo.data||[]).forEach(r=>{ if(r.follower!==me.id) n++; });
+    return n;
+  }catch(e){ return 0; }
 }
 function ideaDayOf(r){
   for(const k of Object.keys(S.recs)){ if((S.recs[k]||[]).some(x=>x.id===r.id)) return k; }
@@ -3051,6 +3080,8 @@ async function openSoc(view, payload){
             <div class="ideameta">${fmtStamp(it.t)}</div>
           </div>
         </div>`).join(''):'<div class="soctip">还没有新消息</div>');
+       S.msgSeenAt=Date.now(); save();
+       const d=$('msgDot'); if(d) d.style.display='none';
     }
     const cl=sh.querySelector('#socClose');
     if(cl) cl.onclick=closeSoc;
