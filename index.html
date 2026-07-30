@@ -351,6 +351,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .psa{width:100%;min-height:150px;max-height:40vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;line-height:1.6;background:var(--bg);color:var(--ink);outline:none;box-sizing:border-box}
   .psa:empty:before{content:attr(data-ph);color:var(--ink-2)}
   .psa mark, .psa [style*="background"]{border-radius:3px}
+  .psa b, .pscn-a b, .pscn-q b{color:inherit !important;font-weight:700}
+  .psa mark{background:#FFE58A;color:#1B2540;border-radius:3px;padding:0 1px}
+  .pscn-a mark, .pscn-q mark{background:#FFE58A;color:#1B2540 !important;border-radius:2px;padding:0 1px}
   .pssize-row{display:flex;gap:6px;align-items:center;margin:10px 0;font-size:13px;color:var(--ink-2);flex-wrap:wrap}
   .pssize{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px}
   .pssize.on{background:#4A90E2;color:#fff;border-color:#4A90E2}
@@ -4352,8 +4355,22 @@ function psOpenCard(id){
   $('psAI').onclick=()=>toast('✨ AI 优化功能开发中');
 
   // 富文本：加粗 / 高亮（execCommand 在移动端 contenteditable 上可用）
-  $('psBold').onclick=()=>{ a.focus(); document.execCommand('bold',false,null); persist(); };
-  $('psHi').onclick=()=>{ a.focus(); document.execCommand('hiliteColor',false,'#FFE58A')||document.execCommand('backColor',false,'#FFE58A'); persist(); };
+  // 富文本：加粗 / 高亮（手动包裹标签，避免 execCommand 在部分 webview 里给加粗上色）
+  const wrapSel=(tag,cls)=>{
+    a.focus();
+    const s=window.getSelection();
+    if(!s.rangeCount) return;
+    const rng=s.getRangeAt(0);
+    if(rng.collapsed || !a.contains(rng.commonAncestorContainer)) { toast('先选中一段文字'); return; }
+    const el=document.createElement(tag);
+    if(cls) el.className=cls;
+    try{ el.appendChild(rng.extractContents()); rng.insertNode(el); }
+    catch(err){ toast('这段不好加，换个选区试试'); return; }
+    s.removeAllRanges();
+    persist();
+  };
+  $('psBold').onclick=()=>wrapSel('b');
+  $('psHi').onclick=()=>wrapSel('mark');
 
   // 选中文字 → 建成新节点（不连线）
   $('psMkNode').onclick=()=>{
