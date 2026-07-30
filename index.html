@@ -4144,27 +4144,30 @@ function renderPSGraph(){
       </g>`;
     });
   } else {
-    // ── 卡片模式：foreignObject 富文本卡片（参考 Obsidian 白板，尺寸随 size 档调节）──
+    // ── 卡片模式：foreignObject 富文本卡片（参考 Obsidian 白板，右下角手柄自由调整大小）──
     nodes.forEach(n=>{
       const sz=Math.min(Math.max((n.size||3),1),6);
-      // 尺寸档 1..6 → 卡片宽度 138..278，正文显示行数随档增大
-      const cw=110+sz*28;
-      const qLines=sz>=5?4:2;
-      const aLines=sz*3;
-      const noClamp=sz===6;             // 最大档：完全不截断，看全部内容
+      // 有自定义宽高就用，否则按 size 档给默认值
+      const cw = n.cw || (110+sz*28);
+      const defH = 40 + (sz*3)*16;
+      const ch = n.ch || defH;
+      const qLines = cw>=230?4:2;
       const border = n.pub ? '#2ED9B0' : '#4A90E2';
       const body=(n.a||'').trim();
-      const ch = noClamp ? Math.max(120, 46 + (body?Math.min(body.replace(/<[^>]+>/g,'').length/Math.max(cw/9,1)*18+40,900):40))
-                         : (40 + aLines*16);
       const x=n.x-cw/2, y=n.y-ch/2;
-      const clampStyle = noClamp ? '' : `-webkit-line-clamp:${aLines};`;
+      // 正文：卡片够高就完整显示（滚动），否则按高度截断
+      const roomy = ch>=140;
+      const clampStyle = roomy ? '' : `-webkit-line-clamp:${Math.max(2,Math.floor((ch-40)/16))};`;
+      const hs=12; // 手柄尺寸
       nodeSvg+=`<g class="psnode" data-id="${n.id}" style="cursor:pointer">
         <foreignObject x="${x}" y="${y}" width="${cw}" height="${ch}">
           <div xmlns="http://www.w3.org/1999/xhtml" class="pscard-node" style="border-color:${border}">
             <div class="pscn-q" style="-webkit-line-clamp:${qLines}">${escHtml(n.q||'无题')}</div>
-            <div class="pscn-a${noClamp?' full':''}" style="${clampStyle}">${body||'<span style="color:#9AA3B2">（空）</span>'}</div>
+            <div class="pscn-a${roomy?' full':''}" style="${clampStyle}">${body||'<span style="color:#9AA3B2">（空）</span>'}</div>
           </div>
         </foreignObject>
+        <rect class="pshandle" data-id="${n.id}" x="${x+cw-hs}" y="${y+ch-hs}" width="${hs}" height="${hs}" rx="3"
+          fill="${border}" stroke="#fff" stroke-width="1.5" style="cursor:nwse-resize"/>
       </g>`;
     });
   }
@@ -4188,11 +4191,26 @@ function bindPSGraphInput(){
   const dist=(t)=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
   const midClient=(t)=>({x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2});
 
+  // 尺寸手柄：按下进入 resize（优先，阻止冒泡到拖动/点击）
+  svg.querySelectorAll('.pshandle').forEach(h=>{
+    const id=h.dataset.id;
+    const hdown=(cx,cy,ev)=>{
+      ev.stopPropagation(); ev.preventDefault();
+      const n=psNode(id); if(!n) return;
+      const p=pt(cx,cy);
+      const sz=Math.min(Math.max((n.size||3),1),6);
+      PS.resize={ id, x:p.x, y:p.y, cw:(n.cw||(110+sz*28)), ch:(n.ch||(40+(sz*3)*16)) };
+    };
+    h.addEventListener('touchstart',e=>{ if(e.touches.length===1) hdown(e.touches[0].clientX,e.touches[0].clientY,e); },{passive:false});
+    h.addEventListener('mousedown',e=>hdown(e.clientX,e.clientY,e));
+  });
+
   svg.querySelectorAll('.psnode').forEach(g=>{
     const id=g.dataset.id;
     const down=(cx,cy,ev)=>{
       ev.stopPropagation();
       if(ev.touches && ev.touches.length>1) return; // 双指不进入拖节点
+      if(PS.resize) return;                          // 正在调尺寸则不拖动
       const p=pt(cx,cy);
       PS.drag={id, x:p.x, y:p.y, moved:false};
     };
@@ -4223,6 +4241,18 @@ function bindPSGraphInput(){
     const cx=touches?touches[0].clientX:e.clientX;
     const cy=touches?touches[0].clientY:e.clientY;
     const p=pt(cx,cy);
+    if(PS.resize){
+      if(e.cancelable) e.preventDefault();
+      const n=psNode(PS.resize.id);
+      if(n){
+        // 手柄在右下角，中心固定：宽高变化 = 手柄位移的 2 倍 / scale
+        n.cw = Math.max(120, PS.resize.cw + 2*(p.x-PS.resize.x)/PS.view.scale);
+        n.ch = Math.max(70,  PS.resize.ch + 2*(p.y-PS.resize.y)/PS.view.scale);
+        PS.resize.moved=true;
+        renderPSGraph();
+      }
+      return;
+    }
     if(PS.drag){
       if(e.cancelable) e.preventDefault();
       const n=psNode(PS.drag.id);
@@ -4241,6 +4271,13 @@ function bindPSGraphInput(){
     }
   };
   const up=(e)=>{
+    if(PS.resize){
+      const moved=PS.resize.moved; PS.resize=null;
+      if(moved) save();
+      PS.panLast=null;
+      if(!e.touches || e.touches.length<2) PS.pinch=null;
+      return;
+    }
     if(PS.drag){
       const {moved,id}=PS.drag; PS.drag=null;
       if(moved) save(); else psOpenCard(id);
