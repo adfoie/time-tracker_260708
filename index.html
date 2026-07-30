@@ -2575,7 +2575,7 @@ function initSb(){
         localStorage.setItem('tt_claimed', me.id);
       }
       switchUser(me.id);
-      syncMsg='已登录'; pullRemote(); loadProfile();
+      syncMsg='已登录'; pullRemote().then(()=>reconcilePubIdeas()); loadProfile();
     }
     else syncMsg='未登录';
     renderMe();
@@ -2856,6 +2856,21 @@ async function togglePubIdea(r){
     if(error){ toast('公开失败：'+error.message); return; }
     r.pub=true; save(); toast('☁ 已公开到星球');
   }
+}
+async function reconcilePubIdeas(){
+  if(!sb||!me) return;
+  try{
+    const {data,error}=await sb.from('public_ideas').select('id').eq('user_id',me.id);
+    if(error) return;
+    const pubSet=new Set((data||[]).map(r=>r.id));
+    let changed=false;
+    Object.values(S.recs).forEach(rs=>rs.forEach(r=>{
+      if(!r.idea) return;
+      const shouldPub=pubSet.has(r.id);
+      if(!!r.pub !== shouldPub){ r.pub=shouldPub; changed=true; }
+    }));
+    if(changed){ saveLocalOnly(); renderRecs(); }
+  }catch(e){}
 }
 /* 补救：把本地所有标记为公开的 idea 重新推送到云端 */
 async function syncPubIdeas(){
