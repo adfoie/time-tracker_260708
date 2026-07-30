@@ -344,8 +344,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .pspub{font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:4px;margin-left:auto}
   .pscard-node{width:100%;height:100%;box-sizing:border-box;background:#1B2540;border:2px solid #4A90E2;border-radius:10px;padding:8px 9px;overflow:hidden;font-family:inherit;pointer-events:none}
   .pscn-q{font-size:12.5px;font-weight:700;color:#EAEEF7;line-height:1.3;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-  .pscn-a{font-size:11px;color:#C2C9D6;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;word-break:break-word}
-  .pscn-a mark, .pscn-a [style*="background"]{border-radius:2px;padding:0 1px}
+  .pscn-a{font-size:11px;color:#C2C9D6;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;word-break:break-word}
+  .pscn-a.full{display:block;overflow:auto}
+  .pscn-a mark, .pscn-a [style*="background"]{border-radius:2px;padding:0 1px;color:#1B2540 !important;font-weight:600}
   .pstoolbar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
   .psa{width:100%;min-height:150px;max-height:40vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;line-height:1.6;background:var(--bg);color:var(--ink);outline:none;box-sizing:border-box}
   .psa:empty:before{content:attr(data-ph);color:var(--ink-2)}
@@ -4143,18 +4144,25 @@ function renderPSGraph(){
       </g>`;
     });
   } else {
-    // ── 卡片模式：foreignObject 富文本卡片（参考 Obsidian 白板）──
-    const cw=PS_CARD_W, ch=120;
+    // ── 卡片模式：foreignObject 富文本卡片（参考 Obsidian 白板，尺寸随 size 档调节）──
     nodes.forEach(n=>{
+      const sz=Math.min(Math.max((n.size||3),1),6);
+      // 尺寸档 1..6 → 卡片宽度 138..278，正文显示行数随档增大
+      const cw=110+sz*28;
+      const qLines=sz>=5?4:2;
+      const aLines=sz*3;
+      const noClamp=sz===6;             // 最大档：完全不截断，看全部内容
       const border = n.pub ? '#2ED9B0' : '#4A90E2';
-      // 卡片以 (x,y) 为中心
-      const x=n.x-cw/2, y=n.y-ch/2;
       const body=(n.a||'').trim();
+      const ch = noClamp ? Math.max(120, 46 + (body?Math.min(body.replace(/<[^>]+>/g,'').length/Math.max(cw/9,1)*18+40,900):40))
+                         : (40 + aLines*16);
+      const x=n.x-cw/2, y=n.y-ch/2;
+      const clampStyle = noClamp ? '' : `-webkit-line-clamp:${aLines};`;
       nodeSvg+=`<g class="psnode" data-id="${n.id}" style="cursor:pointer">
         <foreignObject x="${x}" y="${y}" width="${cw}" height="${ch}">
           <div xmlns="http://www.w3.org/1999/xhtml" class="pscard-node" style="border-color:${border}">
-            <div class="pscn-q">${escHtml(n.q||'无题')}</div>
-            <div class="pscn-a">${body||'<span style="color:#9AA3B2">（空）</span>'}</div>
+            <div class="pscn-q" style="-webkit-line-clamp:${qLines}">${escHtml(n.q||'无题')}</div>
+            <div class="pscn-a${noClamp?' full':''}" style="${clampStyle}">${body||'<span style="color:#9AA3B2">（空）</span>'}</div>
           </div>
         </foreignObject>
       </g>`;
