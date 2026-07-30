@@ -1239,6 +1239,10 @@ function renderRecs(){
   ex.querySelector('.delbtn').onclick = async ev=>{
     ev.stopPropagation();
     if(!await uiConfirm('删除这条记录？')) return;
+    if(r.idea && r.pub && sb && me){                 // 公开 idea：先删云端，避免星球/我的公开留幽灵
+      const {error}=await sb.from('public_ideas').delete().eq('id',r.id).eq('user_id',me.id);
+      if(error){ toast('云端删除失败：'+error.message); return; }
+    }
     const arr = dayRecs(viewDate);
     const idx = arr.findIndex(item => item.id === r.id);
     if(idx !== -1){
@@ -1248,7 +1252,6 @@ function renderRecs(){
       renderAll();
     }
   };
-  
   el.appendChild(ex);
 }
     el.onclick = ()=>{
