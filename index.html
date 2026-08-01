@@ -359,6 +359,10 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .pscolor-row{display:flex;gap:8px;align-items:center;margin:10px 0;font-size:13px;color:var(--ink-2)}
   .pscolor-swatch{width:28px;height:28px;border-radius:8px;border:2px solid var(--line);cursor:pointer;padding:0}
   .pslink-x{margin-left:6px;color:#c0392b;cursor:pointer;font-weight:700}
+  .pslink-dash{margin-left:8px;font-size:11px;color:#4A90E2;cursor:pointer;font-weight:600;border:1px solid #4A90E2;border-radius:4px;padding:0 4px}
+  .pssearch{flex:1;min-width:0;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;font-size:13px;padding:6px 10px;outline:none}
+  .pssearch::placeholder{color:rgba(255,255,255,.5)}
+  .psx{width:30px;height:30px;border-radius:8px;background:#fff;color:#111;border:none;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 </style>
 </head>
 <body>
@@ -443,13 +447,13 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <!-- 个人系统：2D 知识节点图谱 -->
 <div id="psOverlay">
   <div class="pshead">
-    <div class="mtitle" style="flex:1;color:#D8DCE6">🧠 个人系统</div>
-    <button class="minibtn" id="psMode">🗂 卡片</button>
+    <div class="mtitle" style="color:#D8DCE6">🧠 个人系统</div>
+    <input id="psSearch" class="pssearch" placeholder="🔍 搜索节点…">
     <button class="minibtn" id="psAdd">＋ 新节点</button>
-    <button class="close" id="psClose" style="color:#D8DCE6">✕</button>
+    <button class="psx" id="psClose">✕</button>
   </div>
   <div id="psGraph"></div>
-  <div class="pshint">点节点编辑 · 拖动可移动 · 单指拖空白平移画布</div>
+  <div class="pshint">双击空白建节点 · 拖节点移动 · 单指拖空白平移 · 长按空白拖动框选打组</div>
   <div id="psCardWrap"><div id="psCard"></div></div>
 </div>
 <div class="overlay" id="calOverlay">
@@ -494,6 +498,7 @@ function ensureDefaults(s){
   if(!s.planetPos) s.planetPos={};
   if(!s.psNodes) s.psNodes={};
   if(!s.psLinks) s.psLinks=[];
+  if(!s.psGroups) s.psGroups=[];
   ['rest','wake','gn'].forEach(id=>{
     if(!s.cats.find(c=>c.id===id)) s.cats.push(JSON.parse(JSON.stringify(DEFAULT_CATS.find(c=>c.id===id))));
   });
@@ -4071,7 +4076,7 @@ renderAll();
         a = 富文本 HTML（支持加粗/高亮）；size = 1..6 节点尺寸档
         S.psLinks = [ {from, to} ]   // 手动连线（不再依赖高亮文字）
    ═══════════════════════════════════════════════════ */
-let PS = { on:false, mode:'graph', sel:null, selLink:null, drag:null, resize:null, linking:null, guides:null, view:{x:0,y:0,scale:1}, panLast:null, pinch:null };
+let PS = { on:false, sel:null, selLink:null, drag:null, resize:null, linking:null, guides:null, search:'', boxSel:null, selNodes:null, groupDrag:null, view:{x:0,y:0,scale:1}, panLast:null, pinch:null };
 // Delete 键删除选中连线（网页版）——全局绑定一次
 if(!window.__psKeyBound){
   window.__psKeyBound=true;
@@ -4116,7 +4121,7 @@ function psNewNode(){
   // 落在当前视图中心（考虑已平移/缩放），再随机散开一点
   const cx=(W/2-PS.view.x)/PS.view.scale + (Math.random()*80-40);
   const cy=(H/2-PS.view.y)/PS.view.scale + (Math.random()*80-40);
-  S.psNodes[id]={ q:'新节点', a:'', pub:false, ct:Date.now(), x:cx, y:cy, size:3 };
+  S.psNodes[id]={ q:'新节点', a:'', pub:false, ct:Date.now(), x:cx, y:cy, view:'graph' };
   save();
   renderPSGraph();
   psOpenCard(id);
@@ -4125,6 +4130,9 @@ function psNewNode(){
 function psDeleteNode(id){
   delete S.psNodes[id];
   S.psLinks = (S.psLinks||[]).filter(l=>l.from!==id && l.to!==id);
+  // 从所有组里移除该节点
+  (S.psGroups||[]).forEach(g=>{ g.ids=(g.ids||[]).filter(x=>x!==id); });
+  S.psGroups=(S.psGroups||[]).filter(g=>(g.ids||[]).length>0);
   save();
 }
 
@@ -4134,11 +4142,18 @@ function renderPSGraph(){
   const W=wrap.clientWidth||360, H=wrap.clientHeight||420;
   const nodes=psAllNodes();
   const links=S.psLinks||[];
+  const groups=S.psGroups||[];
   const nmap={}; nodes.forEach(n=>nmap[n.id]=n);
   const V=PS.view;
-  const cardMode = PS.mode==='card';
   const PINK='#FF5CA8';
-  const nodeColor=(n)=> n.color || '#4A90E2';   // 默认蓝，可自定义
+  const nodeColor=(n)=> n.color || '#4A90E2';
+  const isCard=(n)=> n.view==='card';
+  // 搜索命中判断
+  const kw=(PS.search||'').trim().toLowerCase();
+  const hit=(n)=>{ if(!kw) return false;
+    const q=(n.q||'').toLowerCase();
+    const a=(n.a||'').replace(/<[^>]+>/g,'').toLowerCase();
+    return q.includes(kw)||a.includes(kw); };
 
   const deg={};
   links.forEach(l=>{ deg[l.from]=(deg[l.from]||0)+1; deg[l.to]=(deg[l.to]||0)+1; });
@@ -4149,7 +4164,7 @@ function renderPSGraph(){
   }
   function autoR(n){ return Math.min(12+(deg[n.id]||0)*2.4, 34); }
   function anchorOf(n, side){
-    if(cardMode){
+    if(isCard(n)){
       const b=cardBox(n);
       if(side==='top')    return {x:n.x, y:b.y};
       if(side==='bottom') return {x:n.x, y:b.y+b.ch};
@@ -4159,10 +4174,34 @@ function renderPSGraph(){
     return {x:n.x, y:n.y};
   }
 
-  // 选中的连线两端节点集合（用于变粉）
   const selEndIds=new Set();
   if(PS.selLink!=null && links[PS.selLink]){ selEndIds.add(links[PS.selLink].from); selEndIds.add(links[PS.selLink].to); }
 
+  // ── 组框（在最底层）──
+  let groupSvg='';
+  groups.forEach((g,gi)=>{
+    const ids=(g.ids||[]).filter(id=>nmap[id]);
+    if(!ids.length) return;
+    let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+    ids.forEach(id=>{
+      const n=nmap[id];
+      let bx,by,bw,bh;
+      if(isCard(n)){ const b=cardBox(n); bx=b.x;by=b.y;bw=b.cw;bh=b.ch; }
+      else { const r=autoR(n); bx=n.x-r;by=n.y-r;bw=2*r;bh=2*r+22; }
+      minx=Math.min(minx,bx); miny=Math.min(miny,by);
+      maxx=Math.max(maxx,bx+bw); maxy=Math.max(maxy,by+bh);
+    });
+    const pad=16;
+    minx-=pad;miny-=pad+16;maxx+=pad;maxy+=pad;
+    groupSvg+=`<g class="psgroup" data-gi="${gi}">
+      <rect x="${minx}" y="${miny}" width="${maxx-minx}" height="${maxy-miny}" rx="12"
+        fill="rgba(74,144,226,0.06)" stroke="#4A90E2" stroke-width="1.4" stroke-dasharray="8 5" style="cursor:move"/>
+      <rect class="psgrouptag" data-gi="${gi}" x="${minx}" y="${miny}" width="${Math.max((g.name||'组').length*13+40,80)}" height="22" rx="6" fill="#4A90E2" style="cursor:pointer"/>
+      <text x="${minx+8}" y="${miny+15}" font-size="12" fill="#fff" style="pointer-events:none">${escHtml(g.name||'组')} ✕</text>
+    </g>`;
+  });
+
+  // ── 连线 ──
   let lineSvg='';
   links.forEach((l,li)=>{
     const a=nmap[l.from], b=nmap[l.to];
@@ -4172,10 +4211,9 @@ function renderPSGraph(){
     const stroke = sel ? PINK : '#8AA0C8';
     const sw = sel ? 2.6 : 1.6;
     const marker = sel ? 'url(#psArrowSel)' : 'url(#psArrow)';
-    // 透明粗线做点击热区，便于点中
+    const dash = l.dashed ? 'stroke-dasharray="7 5"' : '';
     lineSvg+=`<line class="pslinkhit" data-index="${li}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="transparent" stroke-width="16" style="cursor:pointer"/>`;
-    lineSvg+=`<line x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${stroke}" stroke-width="${sw}" opacity="${sel?1:0.7}" marker-end="${marker}" style="pointer-events:none"/>`;
-    // 连线附注文字（Obsidian 风格：中点标签）
+    lineSvg+=`<line x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${stroke}" stroke-width="${sw}" opacity="${sel?1:0.7}" ${dash} marker-end="${marker}" style="pointer-events:none"/>`;
     if(l.note){
       const mx=(pa.x+pb.x)/2, my=(pa.y+pb.y)/2;
       lineSvg+=`<rect x="${mx-l.note.length*3.6-4}" y="${my-9}" width="${l.note.length*7.2+8}" height="16" rx="4" fill="#0A0E1D" opacity="0.85" style="pointer-events:none"/>`;
@@ -4183,39 +4221,48 @@ function renderPSGraph(){
     }
   });
 
+  // 标题字号：缩小时反向补偿（scale<1 时字变相对大，范围 11~20）
+  const titleFont = Math.max(11, Math.min(20, 11/Math.max(V.scale,0.35)));
+
+  // ── 节点（逐个按自己的 view 渲染）──
   let nodeSvg='';
-  if(!cardMode){
-    nodes.forEach(n=>{
+  nodes.forEach(n=>{
+    const searchHit=hit(n);
+    const selp = selEndIds.has(n.id);
+    const inSel = PS.selNodes && PS.selNodes.has(n.id);
+    if(!isCard(n)){
+      // 圆点
       const r=autoR(n);
-      const selp = selEndIds.has(n.id);
-      const fill = selp ? '#FF5CA8' : nodeColor(n);
+      const baseFill = nodeColor(n);
+      const fill = (selp||searchHit) ? PINK : baseFill;
       const title=(n.q||'');
       const per=8, lines=[];
       for(let i=0;i<title.length;i+=per) lines.push(title.slice(i,i+per));
       if(!lines.length) lines.push('');
-      const startY=n.y+r+13;
-      const tspans=lines.map((ln,i)=>`<tspan x="${n.x}" dy="${i===0?0:13}">${escHtml(ln)}</tspan>`).join('');
-      // 公开=双同心圆
-      const pubRing = n.pub ? `<circle cx="${n.x}" cy="${n.y}" r="${r+4}" fill="none" stroke="${fill}" stroke-width="1.5" opacity="0.9"/>` : '';
+      const startY=n.y+r+titleFont+2;
+      const tspans=lines.map((ln,i)=>`<tspan x="${n.x}" dy="${i===0?0:titleFont+2}">${escHtml(ln)}</tspan>`).join('');
+      // 公开双同心圆：第二圈粗细 = 随半径自动、比之前粗一倍
+      const ringW = Math.max(3, r*0.18*2);
+      const pubRing = n.pub ? `<circle cx="${n.x}" cy="${n.y}" r="${r+ringW}" fill="none" stroke="${fill}" stroke-width="${ringW}" opacity="0.9"/>` : '';
+      const selRing = inSel ? `<circle cx="${n.x}" cy="${n.y}" r="${r+ringW+5}" fill="none" stroke="${PINK}" stroke-width="1.5" stroke-dasharray="3 3"/>` : '';
       nodeSvg+=`<g class="psnode" data-id="${n.id}" style="cursor:pointer">
-        ${pubRing}
+        ${selRing}${pubRing}
         <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="${fill}" stroke="#fff" stroke-width="2"/>
-        <text y="${startY}" text-anchor="middle" font-size="11" fill="#D8DCE6">${tspans}</text>
+        <text y="${startY}" text-anchor="middle" font-size="${titleFont}" fill="#D8DCE6">${tspans}</text>
       </g>`;
-    });
-  } else {
-    nodes.forEach(n=>{
+    } else {
+      // 卡片
       const b=cardBox(n); const {cw,ch,x,y}=b;
       const qLines = cw>=230?4:2;
       const col = nodeColor(n);
-      const selp = selEndIds.has(n.id);
-      const border = selp ? '#FF5CA8' : col;
+      const border = (selp||searchHit) ? PINK : col;
       const body=(n.a||'').trim();
       const roomy = ch>=140;
       const clampStyle = roomy ? '' : `-webkit-line-clamp:${Math.max(2,Math.floor((ch-40)/16))};`;
       const hs=12;
-      // 公开=双边框（外层再套一圈）
-      const pubStyle = n.pub ? `box-shadow:0 0 0 2px #1B2540, 0 0 0 4px ${border};` : '';
+      const ringW=Math.max(4, 3*2);
+      const pubStyle = n.pub ? `box-shadow:0 0 0 2px #1B2540, 0 0 0 ${2+ringW}px ${border};` : '';
+      const selBox = inSel ? `<rect x="${x-5}" y="${y-5}" width="${cw+10}" height="${ch+10}" rx="12" fill="none" stroke="${PINK}" stroke-width="1.5" stroke-dasharray="3 3"/>` : '';
       const dots=[
         {side:'top',    cx:n.x,      cy:y},
         {side:'bottom', cx:n.x,      cy:y+ch},
@@ -4223,6 +4270,7 @@ function renderPSGraph(){
         {side:'right',  cx:x+cw,     cy:n.y}
       ].map(d=>`<circle class="psport" data-id="${n.id}" data-side="${d.side}" cx="${d.cx}" cy="${d.cy}" r="6" fill="#fff" stroke="${border}" stroke-width="2" style="cursor:crosshair"/>`).join('');
       nodeSvg+=`<g class="psnode" data-id="${n.id}" style="cursor:pointer">
+        ${selBox}
         <foreignObject x="${x}" y="${y}" width="${cw}" height="${ch}">
           <div xmlns="http://www.w3.org/1999/xhtml" class="pscard-node" style="border-color:${border};${pubStyle}">
             <div class="pscn-q" style="-webkit-line-clamp:${qLines}">${escHtml(n.q||'无题')}</div>
@@ -4233,12 +4281,19 @@ function renderPSGraph(){
         <rect class="pshandle" data-id="${n.id}" x="${x+cw-hs}" y="${y+ch-hs}" width="${hs}" height="${hs}" rx="3"
           fill="${border}" stroke="#fff" stroke-width="1.5" style="cursor:nwse-resize"/>
       </g>`;
-    });
-  }
+    }
+  });
 
   let tempLine='';
   if(PS.linking){
     tempLine=`<line x1="${PS.linking.x0}" y1="${PS.linking.y0}" x2="${PS.linking.x1}" y2="${PS.linking.y1}" stroke="#FFB454" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#psArrow)"/>`;
+  }
+  // 框选矩形
+  let boxSvg='';
+  if(PS.boxSel){
+    const b=PS.boxSel;
+    const x=Math.min(b.x0,b.x1), y=Math.min(b.y0,b.y1);
+    boxSvg=`<rect x="${x}" y="${y}" width="${Math.abs(b.x1-b.x0)}" height="${Math.abs(b.y1-b.y0)}" fill="rgba(255,92,168,0.1)" stroke="${PINK}" stroke-width="1.5" stroke-dasharray="6 4"/>`;
   }
   let guideSvg='';
   if(PS.guides){
@@ -4259,7 +4314,7 @@ function renderPSGraph(){
       </marker>
     </defs>
     <g transform="translate(${V.x},${V.y}) scale(${V.scale})">
-      ${guideSvg}${lineSvg}${tempLine}${nodeSvg}
+      ${groupSvg}${guideSvg}${lineSvg}${tempLine}${nodeSvg}${boxSvg}
     </g></svg>`;
   bindPSGraphInput();
 }
@@ -4268,56 +4323,72 @@ function renderPSGraph(){
 function bindPSGraphInput(){
   const svg=$('psSvg');
   if(!svg) return;
-  const pt=(clientX,clientY)=>{
-    const r=svg.getBoundingClientRect();
-    return { x:clientX-r.left, y:clientY-r.top };
-  };
-  // 屏幕像素 → 图内容坐标（考虑平移缩放）
-  const toContent=(p)=>({ x:(p.x-PS.view.x)/PS.view.scale, y:(p.y-PS.view.y)/PS.view.scale });
+  const pt=(cx,cy)=>{ const r=svg.getBoundingClientRect(); return {x:cx-r.left,y:cy-r.top}; };
+  const toContent=(p)=>({x:(p.x-PS.view.x)/PS.view.scale, y:(p.y-PS.view.y)/PS.view.scale});
   const dist=(t)=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
   const midClient=(t)=>({x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2});
 
-  // 连接点（四边）：按下开始拖连线
-  // 连线：点击选中，双击加附注
+  // 连线点击/双击
   svg.querySelectorAll('.pslinkhit').forEach(ln=>{
     const idx=+ln.dataset.index;
     ln.addEventListener('click',(e)=>{ e.stopPropagation(); PS.selLink=idx; renderPSGraph(); });
     ln.addEventListener('dblclick',async (e)=>{
       e.stopPropagation();
       const l=(S.psLinks||[])[idx]; if(!l) return;
-      const note=await uiPrompt('连线附注文字', '给这条连线加个说明', l.note||'');
+      const note=await uiPrompt('连线附注文字','给这条连线加个说明', l.note||'');
       if(note===null) return;
       l.note=note.trim(); save(); PS.selLink=idx; renderPSGraph();
     });
+  });
+
+  // 组标签点击 = 取消打组
+  svg.querySelectorAll('.psgrouptag').forEach(tag=>{
+    tag.addEventListener('click',async (e)=>{
+      e.stopPropagation();
+      const gi=+tag.dataset.gi; const g=(S.psGroups||[])[gi]; if(!g) return;
+      const act=await uiChoice(`组「${g.name||'组'}」`,[{label:'重命名',val:'ren'},{label:'取消打组',val:'del'}]);
+      if(act==='del'){ S.psGroups.splice(gi,1); save(); renderPSGraph(); }
+      else if(act==='ren'){ const nm=await uiPrompt('组名','', g.name||''); if(nm!==null){ g.name=nm.trim()||'组'; save(); renderPSGraph(); } }
+    });
+  });
+
+  // 组框拖动 = 整组移动
+  svg.querySelectorAll('.psgroup').forEach(gEl=>{
+    const gi=+gEl.dataset.gi;
+    const gdown=(cx,cy,ev)=>{
+      if(ev.target.classList.contains('psgrouptag')) return;
+      ev.stopPropagation();
+      if(ev.touches && ev.touches.length>1) return;
+      const p=pt(cx,cy);
+      PS.groupDrag={ gi, x:p.x, y:p.y, moved:false };
+    };
+    gEl.addEventListener('touchstart',e=>{ if(e.touches.length===1) gdown(e.touches[0].clientX,e.touches[0].clientY,e); },{passive:false});
+    gEl.addEventListener('mousedown',e=>gdown(e.clientX,e.clientY,e));
   });
 
   svg.querySelectorAll('.psport').forEach(pdot=>{
     const id=pdot.dataset.id, side=pdot.dataset.side;
     const pdown=(cx,cy,ev)=>{
       ev.stopPropagation(); ev.preventDefault();
-      const p=pt(cx,cy);
-      const c=toContent(p);
+      const p=pt(cx,cy); const c=toContent(p);
       PS.linking={ from:id, fs:side, x0:+pdot.getAttribute('cx'), y0:+pdot.getAttribute('cy'), x1:c.x, y1:c.y };
     };
     pdot.addEventListener('touchstart',e=>{ if(e.touches.length===1) pdown(e.touches[0].clientX,e.touches[0].clientY,e); },{passive:false});
     pdot.addEventListener('mousedown',e=>pdown(e.clientX,e.clientY,e));
   });
 
-  // 尺寸手柄
   svg.querySelectorAll('.pshandle').forEach(h=>{
     const id=h.dataset.id;
     const hdown=(cx,cy,ev)=>{
       ev.stopPropagation(); ev.preventDefault();
       const n=psNode(id); if(!n) return;
       const p=pt(cx,cy);
-      const sz=Math.min(Math.max((n.size||3),1),6);
-      PS.resize={ id, x:p.x, y:p.y, cw:(n.cw||(110+sz*28)), ch:(n.ch||(40+(sz*3)*16)) };
+      PS.resize={ id, x:p.x, y:p.y, cw:(n.cw||166), ch:(n.ch||120) };
     };
     h.addEventListener('touchstart',e=>{ if(e.touches.length===1) hdown(e.touches[0].clientX,e.touches[0].clientY,e); },{passive:false});
     h.addEventListener('mousedown',e=>hdown(e.clientX,e.clientY,e));
   });
 
-  // 卡片/圆点：按下准备拖动
   svg.querySelectorAll('.psnode').forEach(g=>{
     const id=g.dataset.id;
     const down=(cx,cy,ev)=>{
@@ -4331,13 +4402,9 @@ function bindPSGraphInput(){
     g.addEventListener('mousedown',e=>down(e.clientX,e.clientY,e));
   });
 
-  // 拖卡片时的吸附对齐：与其它节点中心/边缘对齐
   function computeGuides(n){
-    if(PS.mode!=='card'){ PS.guides=null; return; }
-    const TH=6/PS.view.scale;            // 吸附阈值（内容坐标）
-    const guides=[];
+    const TH=6/PS.view.scale; const guides=[];
     const others=psAllNodes().filter(o=>o.id!==n.id);
-    // 只对齐中心（x 与 y）
     for(const o of others){
       if(Math.abs(o.x-n.x)<TH){ n.x=o.x; guides.push({type:'v',at:o.x}); }
       if(Math.abs(o.y-n.y)<TH){ n.y=o.y; guides.push({type:'h',at:o.y}); }
@@ -4349,7 +4416,7 @@ function bindPSGraphInput(){
     const touches=e.touches;
     if(touches && touches.length===2){
       e.preventDefault();
-      PS.drag=null; PS.panLast=null; PS.linking=null;
+      PS.drag=null; PS.panLast=null; PS.linking=null; PS.boxSel=null; PS.groupDrag=null;
       const d=dist(touches), mc=midClient(touches);
       const rect=svg.getBoundingClientRect();
       const mx=mc.x-rect.left, my=mc.y-rect.top;
@@ -4368,108 +4435,140 @@ function bindPSGraphInput(){
     const p=pt(cx,cy);
     if(PS.linking){
       if(e.cancelable) e.preventDefault();
-      const c=toContent(p);
-      PS.linking.x1=c.x; PS.linking.y1=c.y;
-      renderPSGraph();
+      const c=toContent(p); PS.linking.x1=c.x; PS.linking.y1=c.y; renderPSGraph(); return;
+    }
+    if(PS.boxSel){
+      if(e.cancelable) e.preventDefault();
+      const c=toContent(p); PS.boxSel.x1=c.x; PS.boxSel.y1=c.y; renderPSGraph(); return;
+    }
+    if(PS.groupDrag){
+      if(e.cancelable) e.preventDefault();
+      const g=(S.psGroups||[])[PS.groupDrag.gi];
+      if(g){
+        const dx=(p.x-PS.groupDrag.x)/PS.view.scale, dy=(p.y-PS.groupDrag.y)/PS.view.scale;
+        (g.ids||[]).forEach(id=>{ const n=psNode(id); if(n){ n.x+=dx; n.y+=dy; } });
+        PS.groupDrag.x=p.x; PS.groupDrag.y=p.y; PS.groupDrag.moved=true; renderPSGraph();
+      }
       return;
     }
     if(PS.resize){
       if(e.cancelable) e.preventDefault();
       const n=psNode(PS.resize.id);
-      if(n){
-        n.cw = Math.max(120, PS.resize.cw + 2*(p.x-PS.resize.x)/PS.view.scale);
-        n.ch = Math.max(70,  PS.resize.ch + 2*(p.y-PS.resize.y)/PS.view.scale);
-        PS.resize.moved=true;
-        renderPSGraph();
-      }
+      if(n){ n.cw=Math.max(120,PS.resize.cw+2*(p.x-PS.resize.x)/PS.view.scale);
+             n.ch=Math.max(70, PS.resize.ch+2*(p.y-PS.resize.y)/PS.view.scale);
+             PS.resize.moved=true; renderPSGraph(); }
       return;
     }
     if(PS.drag){
       if(e.cancelable) e.preventDefault();
       const n=psNode(PS.drag.id);
-      if(n){
-        n.x += (p.x-PS.drag.x)/PS.view.scale;
-        n.y += (p.y-PS.drag.y)/PS.view.scale;
-        PS.drag.x=p.x; PS.drag.y=p.y; PS.drag.moved=true;
-        computeGuides(n);
-        renderPSGraph();
-      }
+      if(n){ n.x+=(p.x-PS.drag.x)/PS.view.scale; n.y+=(p.y-PS.drag.y)/PS.view.scale;
+             PS.drag.x=p.x; PS.drag.y=p.y; PS.drag.moved=true; computeGuides(n); renderPSGraph(); }
     } else if(PS.panLast){
       if(e.cancelable) e.preventDefault();
-      PS.view.x += (p.x-PS.panLast.x);
-      PS.view.y += (p.y-PS.panLast.y);
-      PS.panLast=p;
-      renderPSGraph();
+      PS.view.x+=(p.x-PS.panLast.x); PS.view.y+=(p.y-PS.panLast.y); PS.panLast=p; renderPSGraph();
     }
   };
 
-  // 命中检测：松手时落在哪个连接点/卡片上 → 建连线
   function hitPort(clientX,clientY){
     const el=document.elementFromPoint(clientX,clientY);
     if(el && el.classList && el.classList.contains('psport')) return {id:el.dataset.id, side:el.dataset.side};
-    // 落在卡片 g 上：连到该卡片、默认 side 取最近边
     let g=el; while(g && g!==svg){ if(g.classList && g.classList.contains('psnode')) return {id:g.dataset.id, side:null}; g=g.parentNode; }
     return null;
+  }
+
+  // 框选完成 → 命中的节点存进 PS.selNodes，弹出打组确认
+  async function finishBoxSelect(){
+    const b=PS.boxSel; PS.boxSel=null;
+    if(!b){ renderPSGraph(); return; }
+    const x0=Math.min(b.x0,b.x1),x1=Math.max(b.x0,b.x1),y0=Math.min(b.y0,b.y1),y1=Math.max(b.y0,b.y1);
+    if(Math.abs(x1-x0)<12 && Math.abs(y1-y0)<12){ PS.selNodes=null; renderPSGraph(); return; }
+    const sel=new Set();
+    psAllNodes().forEach(n=>{ if(n.x>=x0&&n.x<=x1&&n.y>=y0&&n.y<=y1) sel.add(n.id); });
+    PS.selNodes = sel.size?sel:null;
+    renderPSGraph();
+    if(sel.size>=1){
+      const name=await uiPrompt('给这组起个名字（取消则不打组）','组名','');
+      if(name!==null){
+        S.psGroups=S.psGroups||[];
+        S.psGroups.push({name:name.trim()||'组', ids:[...sel]});
+        save();
+      }
+      PS.selNodes=null; renderPSGraph();
+    }
   }
 
   const up=(e)=>{
     if(PS.linking){
       const t=(e.changedTouches&&e.changedTouches[0])||e;
-      const hit=hitPort(t.clientX, t.clientY);
+      const hit=hitPort(t.clientX,t.clientY);
       const L=PS.linking; PS.linking=null;
       if(hit && hit.id && hit.id!==L.from){
         if(!(S.psLinks||[]).some(l=>l.from===L.from && l.to===hit.id)){
-          S.psLinks.push({from:L.from, to:hit.id, fs:L.fs, ts:hit.side||'top'});
-          save();
+          S.psLinks.push({from:L.from, to:hit.id, fs:L.fs, ts:hit.side||'top'}); save();
         }
       }
-      renderPSGraph();
-      PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null;
-      return;
+      renderPSGraph(); PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null; return;
     }
-    if(PS.resize){
-      const moved=PS.resize.moved; PS.resize=null;
-      if(moved) save();
-      PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null;
-      return;
-    }
-    if(PS.drag){
-      const {moved,id}=PS.drag; PS.drag=null;
-      PS.guides=null;
-      if(moved){ save(); renderPSGraph(); } else psOpenCard(id);
-    }
-    PS.panLast=null;
-    if(!e.touches || e.touches.length<2) PS.pinch=null;
+    if(PS.boxSel){ finishBoxSelect(); PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null; return; }
+    if(PS.groupDrag){ const m=PS.groupDrag.moved; PS.groupDrag=null; if(m) save(); PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null; return; }
+    if(PS.resize){ const m=PS.resize.moved; PS.resize=null; if(m) save(); PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null; return; }
+    if(PS.drag){ const {moved,id}=PS.drag; PS.drag=null; PS.guides=null; if(moved){ save(); renderPSGraph(); } else psOpenCard(id); }
+    PS.panLast=null; if(!e.touches||e.touches.length<2) PS.pinch=null;
   };
 
+  // 空白按下：网页 Ctrl+左键=平移，普通左键=框选；手机长按=框选、单指=平移
+  let longPressTimer=null;
   const bgDown=(cx,cy,e)=>{
     const tag=e.target.tagName;
-    if(e.target===svg || tag==='svg' || tag==='g'){
-      PS.panLast=pt(cx,cy);
-      if(PS.selLink!=null){ PS.selLink=null; renderPSGraph(); }
+    const onBlank = (e.target===svg || tag==='svg' || tag==='g' || tag==='rect'&&e.target.getAttribute('fill')&&e.target.getAttribute('fill').indexOf('rgba')<0);
+    const blank = (e.target===svg || tag==='svg' || tag==='g');
+    if(!blank) return;
+    if(PS.selLink!=null){ PS.selLink=null; }
+    if(PS.selNodes){ PS.selNodes=null; }
+    const p=pt(cx,cy); const c=toContent(p);
+    const isMouse = e.type==='mousedown';
+    if(isMouse){
+      if(e.ctrlKey){ PS.panLast=p; }        // Ctrl+左键 = 平移
+      else { PS.boxSel={x0:c.x,y0:c.y,x1:c.x,y1:c.y}; }  // 左键 = 框选
+      renderPSGraph();
+    } else {
+      // 手机：单指默认平移；长按 350ms 转框选
+      PS.panLast=p;
+      longPressTimer=setTimeout(()=>{ PS.panLast=null; PS.boxSel={x0:c.x,y0:c.y,x1:c.x,y1:c.y}; renderPSGraph(); },350);
     }
   };
+  const clearLP=()=>{ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; } };
+
   svg.addEventListener('touchstart',e=>{
-    if(e.touches.length===2){ PS.pinch={d:dist(e.touches)}; PS.drag=null; PS.panLast=null; PS.linking=null; }
+    if(e.touches.length===2){ PS.pinch={d:dist(e.touches)}; PS.drag=null; PS.panLast=null; PS.linking=null; PS.boxSel=null; clearLP(); }
     else if(e.touches.length===1){ bgDown(e.touches[0].clientX,e.touches[0].clientY,e); }
   },{passive:false});
   svg.addEventListener('mousedown',e=>bgDown(e.clientX,e.clientY,e));
-  svg.addEventListener('touchmove',move,{passive:false});
+  svg.addEventListener('touchmove',e=>{ if(PS.panLast||PS.boxSel) clearLP(); move(e); },{passive:false});
   svg.addEventListener('mousemove',move);
-  svg.addEventListener('touchend',up);
+  svg.addEventListener('touchend',e=>{ clearLP(); up(e); });
   svg.addEventListener('mouseup',up);
 
-  // 网页端：Ctrl + 滚轮 缩放画布
+  // 双击空白 = 建新节点
+  svg.addEventListener('dblclick',(e)=>{
+    const tag=e.target.tagName;
+    if(!(e.target===svg || tag==='svg' || tag==='g')) return;
+    const p=pt(e.clientX,e.clientY); const c=toContent(p);
+    const id='n'+uid();
+    S.psNodes[id]={ q:'新节点', a:'', pub:false, ct:Date.now(), x:c.x, y:c.y, view:'graph' };
+    save(); renderPSGraph(); psOpenCard(id);
+  });
+
   svg.addEventListener('wheel',(e)=>{
-    if(!e.ctrlKey) return;      // 只在按住 Ctrl 时缩放
+    if(!e.ctrlKey) return;
     e.preventDefault();
     const p=pt(e.clientX,e.clientY);
     const factor=e.deltaY<0?1.1:1/1.1;
     const ns=Math.min(Math.max(PS.view.scale*factor,0.3),4);
-    PS.view.x = p.x - (p.x-PS.view.x)*(ns/PS.view.scale);
-    PS.view.y = p.y - (p.y-PS.view.y)*(ns/PS.view.scale);
-    PS.view.scale=ns;
-    renderPSGraph();
+    PS.view.x=p.x-(p.x-PS.view.x)*(ns/PS.view.scale);
+    PS.view.y=p.y-(p.y-PS.view.y)*(ns/PS.view.scale);
+    PS.view.scale=ns; renderPSGraph();
   },{passive:false});
 }
 
@@ -4480,10 +4579,10 @@ function psOpenCard(id){
   PS.sel=id;
   const box=$('psCard');
   // 出链：从本节点出发的连线
-  const outLinks=(S.psLinks||[]).filter(l=>l.from===id);
-  const linkHtml=outLinks.map(l=>{
-    const t=psNode(l.to);
-    return `<span class="pslink" data-goto="${l.to}">🔗 → ${escHtml((t&&t.q)||'（已删）')}<b class="pslink-x" data-cut="${l.to}">✕</b></span>`;
+  const outLinks=(S.psLinks||[]).map((l,i)=>({l,i})).filter(o=>o.l.from===id);
+  const linkHtml=outLinks.map(o=>{
+    const l=o.l, t=psNode(l.to);
+    return `<span class="pslink" data-goto="${l.to}">🔗 → ${escHtml((t&&t.q)||'（已删）')}<b class="pslink-dash" data-li="${o.i}">${l.dashed?'虚线':'实线'}</b><b class="pslink-x" data-cut="${l.to}">✕</b></span>`;
   }).join('');
   box.innerHTML=`
     <div class="pscard-head">
@@ -4496,7 +4595,7 @@ function psOpenCard(id){
       <button class="minibtn" id="psMkNode">✚ 选中文字建新节点</button>
     </div>
     <div id="psA" class="psa" contenteditable="true" data-ph="A：在这里写内容。选中文字可加粗/高亮，或建成新节点。"></div>
-    <div class="pscolor-row">节点颜色：<button class="pscolor-swatch" id="psColorBtn" style="background:${n.color||'#4A90E2'}"></button><button class="minibtn" id="psColorReset">恢复默认</button></div>
+    <div class="pscolor-row">节点颜色：<button class="pscolor-swatch" id="psColorBtn" style="background:${n.color||'#4A90E2'}"></button><button class="minibtn" id="psColorReset">恢复默认</button><span style="margin-left:auto">显示：</span><button class="minibtn" id="psViewToggle">${n.view==='card'?'🗂 卡片':'⚬ 圆点'}</button></div>
     <div class="pslinks">${linkHtml||'<span class="pstip">还没有连线。从卡片四边圆点拖出即可。</span>'}</div>
     <div class="pscard-ops">
       <button class="minibtn" id="psAI">✨ AI 优化</button>
@@ -4582,10 +4681,21 @@ function psOpenCard(id){
     $('psColorBtn').style.background='#4A90E2';
     renderPSGraph();
   };
+  // 显示模式：卡片 / 圆点
+  $('psViewToggle').onclick=()=>{
+    n.view = n.view==='card' ? 'graph' : 'card';
+    $('psViewToggle').textContent = n.view==='card' ? '🗂 卡片' : '⚬ 圆点';
+    save(); renderPSGraph();
+  };
 
-  // 跳转 / 断开某条出链
+  // 跳转 / 断开 / 虚实线
   box.querySelectorAll('.pslink').forEach(el=>{
-    el.onclick=(ev)=>{ if(ev.target.classList.contains('pslink-x')) return; psOpenCard(el.dataset.goto); };
+    el.onclick=(ev)=>{ if(ev.target.classList.contains('pslink-x')||ev.target.classList.contains('pslink-dash')) return; psOpenCard(el.dataset.goto); };
+  });
+  box.querySelectorAll('.pslink-dash').forEach(d=>d.onclick=(ev)=>{
+    ev.stopPropagation();
+    const l=(S.psLinks||[])[+d.dataset.li]; if(!l) return;
+    l.dashed=!l.dashed; save(); psOpenCard(id); renderPSGraph();
   });
   box.querySelectorAll('.pslink-x').forEach(x=>x.onclick=(ev)=>{
     ev.stopPropagation();
@@ -4595,14 +4705,9 @@ function psOpenCard(id){
   });
 }
 
-/* 按钮式连线：从当前节点连到选中的目标节点 */
 $('psAdd').onclick=psNewNode;
 $('psClose').onclick=closePS;
-$('psMode').onclick=()=>{
-  PS.mode = PS.mode==='card' ? 'graph' : 'card';
-  $('psMode').textContent = PS.mode==='card' ? '⚬ 图谱' : '🗂 卡片';
-  renderPSGraph();
-};
+$('psSearch').oninput=(e)=>{ PS.search=e.target.value; renderPSGraph(); };
 </script>
 </body>
 </html>
