@@ -1066,7 +1066,7 @@ function renderTodos(){
     const txt=await uiPrompt('添加待办','待办内容');
     if(!txt||!txt.trim()) return;
     const item={id:uid(), text:txt.trim().slice(0,50), done:false};
-    const v=await uiPrompt('提醒时间','24小时制，如 09:00；留空不提醒','');
+    const v=await uiPrompt('提醒时间','24小时制，如 09:00；无提醒时间直接确认即可','');
     if(v && v.trim()){
       const norm=normalizeTime(v.trim());
       if(norm){ item.time=norm; item.notified=false; askNotifyPerm(); }
@@ -1218,7 +1218,7 @@ function renderRecs(){
   rs = [...timelines, ...ideas];
   
   if(!rs.length){
-    list.innerHTML = `<div class="empty"><div class="big">◔</div>双击上方标签开始计时<br>或点左下角 ✎ 手动补录</div>`;
+    list.innerHTML = `<div class="empty"><div class="big">◔</div>双击上方标签开始计时<br>或点左下角 ✎ 手动补录<br>或点右下角 idea 记录💡</div>`;
     return;
   }
   
